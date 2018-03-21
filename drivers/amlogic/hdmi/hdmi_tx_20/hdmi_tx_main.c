@@ -2362,7 +2362,7 @@ static unsigned char *aud_type_string[] = {
 	"CT_ATRAC",
 	"CT_ONE_BIT_AUDIO",
 	"CT_DOLBY_D",
-	"CT_DTS_HD",
+	"CT_DTS_HD (HRA/MA/X)",
 	"CT_MAT",
 	"CT_DST",
 	"CT_WMA",

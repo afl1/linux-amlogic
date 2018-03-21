@@ -2323,40 +2323,68 @@ static void set_aud_info_pkt(struct hdmitx_dev *hdev,
 	hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDICONF1, 0, 4, 2); /* SS */
 	switch (audio_param->type) {
 	case CT_MAT:
+		hdmi_print(INF, AUD "Audio Type: MAT(MLP)\n");
 	case CT_DTS_HD_MA:
-		/* CC: 8ch */
-		hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDICONF0, 7, 4, 3);
-		hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x13);
+		if (audio_param->type == CT_DTS_HD_MA)
+			hdmi_print(INF, AUD "Audio Type: DTS HD MA\n");
+		/* CC: refer to stream */
+		hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDICONF0, 0, 4, 3);
+		hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x0);
+		break;
+	/* DTS-HD-HRA */
+	case CT_DTS_HD:
+		hdmi_print(INF, AUD "Audio Type: DTS-HD HRA\n");
+		hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDICONF0, 1, 4, 3);
+		hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x0);
 		break;
 	case CT_PCM:
+		hdmi_print(INF, AUD "Audio Type: PCM  Audio Channels: %u, Speaker layout: 0x%x\n",
+				audio_param->channel_num + 1, hdev->speaker_layout);
+		hdmi_print(INF, AUD "Audio Output Channels set to: %x:%x\n",
+			(hdev->aud_output_ch >> 4) & 0xf,
+			(hdev->aud_output_ch & 0xf));
+
 		if (!hdev->aud_output_ch)
 			hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDICONF0,
 				audio_param->channel_num, 4, 3);
-		if ((audio_param->channel_num == 0x7) && (!hdev->aud_output_ch))
-			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x13);
-		else
-			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x00);
-		/* Refer to CEA861-D P90 */
-		switch (GET_OUTCHN_NO(hdev->aud_output_ch)) {
-		case 2:
-			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x00);
-			break;
-		case 4:
-			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x03);
-			break;
-		case 6:
-			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x0b);
-			break;
-		case 8:
-			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x13);
-			break;
-		default:
-			break;
+			/* mask is set in parent method */
+
+		if (hdev->speaker_layout >= 0)
+			hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, hdev->speaker_layout);
+		else {
+			/* Refer to CEA861-D P90 */
+			switch (GET_OUTCHN_NO(hdev->aud_output_ch)) {
+				case 2:
+					hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x00);
+					break;
+				case 4:
+					hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x03);
+					break;
+				case 6:
+					hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x0b);
+					break;
+				case 8:
+					hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x13);
+					break;
+				default:
+					break;
+			}
 		}
 		break;
-	case CT_DTS:
-	case CT_DTS_HD:
 	default:
+		switch (audio_param->type) {
+			case CT_DTS:
+				hdmi_print(INF, AUD "Audio Type: DTS\n");
+				break;
+			case CT_AC_3:
+				hdmi_print(INF, AUD "Audio Type: AC3\n");
+				break;
+			case CT_DOLBY_D:
+				hdmi_print(INF, AUD "Audio Type: Dolby Digital +\n");
+				break;
+			default:
+				hdmi_print(INF, AUD "Audio Type: #%d\n", audio_param->type);
+		}
 		/* CC: 2ch */
 		hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDICONF0, 1, 4, 3);
 		hdmitx_wr_reg(HDMITX_DWC_FC_AUDICONF2, 0x0);
@@ -2453,19 +2481,17 @@ static void set_aud_samp_pkt(struct hdmitx_dev *hdev,
 		if ((audio_param->channel_num == 0x7) && (!hdev->aud_output_ch))
 			hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDSCONF, 1, 0, 1);
 		else
-			hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDSCONF, 0, 0, 1);
-		switch (GET_OUTCHN_NO(hdev->aud_output_ch)) {
-		case 2:
-			hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDSCONF, 0, 0, 1);
-			break;
-		case 4:
-		case 6:
-		case 8:
-			hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDSCONF, 1, 0, 1);
-			break;
-		default:
-			break;
-		}
+			switch (GET_OUTCHN_NO(hdev->aud_output_ch)) {
+				case 4:
+				case 6:
+				case 8:
+					hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDSCONF, 1, 0, 1);
+					break;
+				case 2:
+				default:
+					hdmitx_set_reg_bits(HDMITX_DWC_FC_AUDSCONF, 0, 0, 1);
+					break;
+			}
 		break;
 	case CT_AC_3:
 	case CT_DOLBY_D:
@@ -2487,7 +2513,7 @@ static void audio_mute_op(bool flag)
 		hdmitx_set_reg_bits(HDMITX_DWC_FC_PACKET_TX_EN, 0, 0, 1);
 		hdmitx_set_reg_bits(HDMITX_DWC_FC_PACKET_TX_EN, 0, 3, 1);
 	} else {
-		hdmitx_set_reg_bits(HDMITX_TOP_CLK_CNTL, 3, 2, 2);
+		hdmitx_set_reg_bits(HDMITX_TOP_CLK_CNTL, tx_aud_src + 1, 2, 2);  // turn on only spdif or i2s
 		hdmitx_set_reg_bits(HDMITX_DWC_FC_PACKET_TX_EN, 1, 0, 1);
 		hdmitx_set_reg_bits(HDMITX_DWC_FC_PACKET_TX_EN, 1, 3, 1);
 	}
@@ -2503,7 +2529,6 @@ static int hdmitx_set_audmode(struct hdmitx_dev *hdev,
 	if (!audio_param)
 		return 0;
 	pr_info("hdmtix: set audio\n");
-	audio_mute_op(hdev->tx_aud_cfg);
 	/* PCM & 8 ch */
 	if ((audio_param->type == CT_PCM) &&
 		(audio_param->channel_num == (8 - 1)))
@@ -2589,6 +2614,8 @@ static int hdmitx_set_audmode(struct hdmitx_dev *hdev,
 		/* Wait for 40 us for TX I2S decoder to settle */
 		msleep(20);
 	}
+	else
+		hdmitx_set_reg_bits(HDMITX_DWC_AUD_CONF0, 0xf, 0, 4);
 	set_aud_fifo_rst();
 	udelay(10);
 	hdmitx_wr_reg(HDMITX_DWC_AUD_N1, hdmitx_rd_reg(HDMITX_DWC_AUD_N1));
