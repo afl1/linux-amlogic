@@ -30,7 +30,7 @@ struct aml_T9015_audio_priv {
 static const struct reg_default t9015_init_list[] = {
 	{AUDIO_CONFIG_BLOCK_ENABLE, 0x0000300F},
 	{ADC_VOL_CTR_PGA_IN_CONFIG, 0x00000000},
-	{DAC_VOL_CTR_DAC_SOFT_MUTE, 0xFBFB0000},
+	{DAC_VOL_CTR_DAC_SOFT_MUTE, 0xFEFE0000},
 	{LINE_OUT_CONFIG, 0x00001111},
 	{POWER_CONFIG, 0x00010000},
 };
@@ -85,11 +85,11 @@ static int aml_DAC_Gain_set_enum(
 		pr_info("It has risk of distortion!\n");
 	}
 
-	snd_soc_write(codec, val, add);
+	snd_soc_write(codec, add, val);
 	return 0;
 }
 
-static const DECLARE_TLV_DB_SCALE(dac_vol_tlv, -95250, 375, 1);
+static const DECLARE_TLV_DB_SCALE(dac_vol_tlv, -9398, 37, 1);
 
 static const char *const DAC_Gain_texts[] = { "0dB", "6dB", "12dB", "18dB" };
 
@@ -100,13 +100,13 @@ static const struct soc_enum DAC_Gain_enum = SOC_ENUM_SINGLE(
 static const struct snd_kcontrol_new T9015_audio_snd_controls[] = {
 
 	/*DAC Digital Volume control */
-	SOC_DOUBLE_TLV("DAC Digital Playback Volume",
+	SOC_DOUBLE_TLV("DAC Digital Volume",
 			   DAC_VOL_CTR_DAC_SOFT_MUTE,
 			   DACL_VC, DACR_VC,
-			   0xff, 0, dac_vol_tlv),
+			   0xfe, 0, dac_vol_tlv),
 
     /*DAC extra Digital Gain control */
-	SOC_ENUM_EXT("DAC Extra Digital Gain",
+	SOC_ENUM_EXT("DAC Extra Gain",
 			   DAC_Gain_enum,
 			   aml_DAC_Gain_get_enum,
 			   aml_DAC_Gain_set_enum),
@@ -161,9 +161,9 @@ static const struct snd_soc_dapm_widget T9015_audio_dapm_widgets[] = {
 
 	/*Output */
 	SND_SOC_DAPM_OUTPUT("Lineout left N"),
-	SND_SOC_DAPM_OUTPUT("Lineout left P"),
+//	SND_SOC_DAPM_OUTPUT("Lineout left P"),
 	SND_SOC_DAPM_OUTPUT("Lineout right N"),
-	SND_SOC_DAPM_OUTPUT("Lineout right P"),
+//	SND_SOC_DAPM_OUTPUT("Lineout right P"),
 
 	/*DAC playback stream */
 	SND_SOC_DAPM_DAC("Left DAC", "HIFI Playback",
@@ -174,49 +174,49 @@ static const struct snd_soc_dapm_widget T9015_audio_dapm_widgets[] = {
 			 DACR_EN, 0),
 
 	/*DRV output */
-	SND_SOC_DAPM_OUT_DRV("LOLP_OUT_EN", AUDIO_CONFIG_BLOCK_ENABLE,
-			     VMID_GEN_EN, 0, NULL, 0),
+//	SND_SOC_DAPM_OUT_DRV("LOLP_OUT_EN", SND_SOC_NOPM,
+//			     0, 0, NULL, 0),
 	SND_SOC_DAPM_OUT_DRV("LOLN_OUT_EN", SND_SOC_NOPM,
 			     0, 0, NULL, 0),
-	SND_SOC_DAPM_OUT_DRV("LORP_OUT_EN", SND_SOC_NOPM,
-			     0, 0, NULL, 0),
+//	SND_SOC_DAPM_OUT_DRV("LORP_OUT_EN", SND_SOC_NOPM,
+//			     0, 0, NULL, 0),
 	SND_SOC_DAPM_OUT_DRV("LORN_OUT_EN", SND_SOC_NOPM,
 			     0, 0, NULL, 0),
 
 	/*MUX output source select */
-	SND_SOC_DAPM_MUX("Lineout left P switch", SND_SOC_NOPM,
-			 0, 0, &line_out_lp_mux),
+//	SND_SOC_DAPM_MUX("Lineout left P switch", SND_SOC_NOPM,
+//			 0, 0, &line_out_lp_mux),
 	SND_SOC_DAPM_MUX("Lineout left N switch", SND_SOC_NOPM,
 			 0, 0, &line_out_ln_mux),
-	SND_SOC_DAPM_MUX("Lineout right P switch", SND_SOC_NOPM,
-			 0, 0, &line_out_rp_mux),
+//	SND_SOC_DAPM_MUX("Lineout right P switch", SND_SOC_NOPM,
+//			 0, 0, &line_out_rp_mux),
 	SND_SOC_DAPM_MUX("Lineout right N switch", SND_SOC_NOPM,
 			 0, 0, &line_out_rn_mux),
 };
 
 static const struct snd_soc_dapm_route T9015_audio_dapm_routes[] = {
     /*Output path*/
-	{"Lineout left P switch", "LOLP_SEL_DACL", "Left DAC"},
-	{"Lineout left P switch", "LOLP_SEL_DACL_INV", "Left DAC"},
+//	{"Lineout left P switch", "LOLP_SEL_DACL", "Left DAC"},
+//	{"Lineout left P switch", "LOLP_SEL_DACL_INV", "Left DAC"},
 
 	{"Lineout left N switch", "LOLN_SEL_DACL_INV", "Left DAC"},
 	{"Lineout left N switch", "LOLN_SEL_DACL", "Left DAC"},
 
-	{"Lineout right P switch", "LORP_SEL_DACR", "Right DAC"},
-	{"Lineout right P switch", "LORP_SEL_DACR_INV", "Right DAC"},
+//	{"Lineout right P switch", "LORP_SEL_DACR", "Right DAC"},
+//	{"Lineout right P switch", "LORP_SEL_DACR_INV", "Right DAC"},
 
 	{"Lineout right N switch", "LORN_SEL_DACR_INV", "Right DAC"},
 	{"Lineout right N switch", "LORN_SEL_DACR", "Right DAC"},
 
 	{"LOLN_OUT_EN", NULL, "Lineout left N switch"},
-	{"LOLP_OUT_EN", NULL, "Lineout left P switch"},
+//	{"LOLP_OUT_EN", NULL, "Lineout left P switch"},
 	{"LORN_OUT_EN", NULL, "Lineout right N switch"},
-	{"LORP_OUT_EN", NULL, "Lineout right P switch"},
+//	{"LORP_OUT_EN", NULL, "Lineout right P switch"},
 
 	{"Lineout left N", NULL, "LOLN_OUT_EN"},
-	{"Lineout left P", NULL, "LOLP_OUT_EN"},
+//	{"Lineout left P", NULL, "LOLP_OUT_EN"},
 	{"Lineout right N", NULL, "LORN_OUT_EN"},
-	{"Lineout right P", NULL, "LORP_OUT_EN"},
+//	{"Lineout right P", NULL, "LORP_OUT_EN"},
 };
 
 static int aml_T9015_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
@@ -349,6 +349,7 @@ static int aml_T9015_audio_probe(struct snd_soc_codec *codec)
 	aml_aiu_write(AIU_ACODEC_CTRL, (1 << 4)
 			   |(1 << 6)
 			   |(1 << 11)
+			   |(1 << 13)
 			   |(1 << 15)
 			   |(2 << 2)
 	);
