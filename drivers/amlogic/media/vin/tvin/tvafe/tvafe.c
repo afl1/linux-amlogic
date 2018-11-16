@@ -261,7 +261,8 @@ int tvafe_dec_open(struct tvin_frontend_s *fe, enum tvin_port_e port)
 #ifdef CONFIG_AMLOGIC_MEDIA_TVIN_AVDETECT
 	/*only txlx chip enabled*/
 	if (tvafe_cpu_type() == CPU_TYPE_TXLX ||
-		tvafe_cpu_type() == CPU_TYPE_TL1) {
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2) {
 		/*synctip set to 0 when tvafe working&&av connected*/
 		/*enable clamp if av connected*/
 		if (port == TVIN_PORT_CVBS1) {
@@ -355,7 +356,9 @@ void tvafe_dec_start(struct tvin_frontend_s *fe, enum tvin_sig_fmt_e fmt)
 		W_APB_REG(CVD2_H_LOOP_MAXSTATE, 0x9);
 
 #ifdef CONFIG_AMLOGIC_MEDIA_TVIN_AVDETECT
-	if (tvafe_cpu_type() == CPU_TYPE_TXLX) {
+	if (tvafe_cpu_type() == CPU_TYPE_TXLX ||
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2) {
 		if (port == TVIN_PORT_CVBS1)
 			tvafe_avin_detect_ch1_anlog_enable(0);
 		else if (port == TVIN_PORT_CVBS2)
@@ -421,7 +424,9 @@ void tvafe_dec_stop(struct tvin_frontend_s *fe, enum tvin_port_e port)
 		tvafe_cvd2_set_default_de(&tvafe->cvd2);
 	}
 #ifdef CONFIG_AMLOGIC_MEDIA_TVIN_AVDETECT
-	if (tvafe_cpu_type() == CPU_TYPE_TXLX) {
+	if (tvafe_cpu_type() == CPU_TYPE_TXLX ||
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2) {
 		if (port == TVIN_PORT_CVBS1)
 			tvafe_avin_detect_ch1_anlog_enable(1);
 		else if (port == TVIN_PORT_CVBS2)
@@ -490,7 +495,8 @@ void tvafe_dec_close(struct tvin_frontend_s *fe)
 #endif
 #ifdef CONFIG_AMLOGIC_MEDIA_TVIN_AVDETECT
 	if (tvafe_cpu_type() == CPU_TYPE_TXLX ||
-		tvafe_cpu_type() == CPU_TYPE_TL1) {
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2) {
 		/*avsync tip set 1 to resume av detect*/
 		if (tvafe->parm.port == TVIN_PORT_CVBS1) {
 			avport_opened = 0;
@@ -1008,19 +1014,6 @@ static long tvafe_ioctl(struct file *file,
 				manual_flag = 1;
 			break;
 		}
-	case TVIN_IOC_G_AFE_CVBS_STD:
-		{
-			enum tvin_sig_fmt_e fmt = TVIN_SIG_FMT_NULL;
-
-			if (tvafe->cvd2.info.state == TVAFE_CVD2_STATE_FIND)
-				fmt = tvafe->cvd2.config_fmt;
-			if (copy_to_user(argp, &fmt,
-					sizeof(enum tvin_sig_fmt_e)))
-				ret = -EFAULT;
-			tvafe_pr_info("%s: ioctl get fmt:%s.\n",
-				__func__, tvin_sig_fmt_str(fmt));
-			break;
-		}
 	default:
 		ret = -ENOIOCTLCMD;
 		break;
@@ -1201,6 +1194,11 @@ struct meson_tvafe_data meson_tl1_tvafe_data = {
 	.name = "meson-tl1-tvafe",
 };
 
+struct meson_tvafe_data meson_tm2_tvafe_data = {
+	.cpu_id = CPU_TYPE_TM2,
+	.name = "meson-tm2-tvafe",
+};
+
 static const struct of_device_id meson_tvafe_dt_match[] = {
 	{
 		.compatible = "amlogic, tvafe-gxtvbb",
@@ -1217,6 +1215,9 @@ static const struct of_device_id meson_tvafe_dt_match[] = {
 	}, {
 		.compatible = "amlogic, tvafe-tl1",
 		.data		= &meson_tl1_tvafe_data,
+	}, {
+		.compatible = "amlogic, tvafe-tm2",
+		.data		= &meson_tm2_tvafe_data,
 	},
 	{},
 };

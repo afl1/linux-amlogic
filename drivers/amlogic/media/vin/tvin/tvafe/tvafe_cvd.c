@@ -321,8 +321,6 @@ static void tvafe_cvd2_memory_init(struct tvafe_cvd2_mem_s *mem,
 	cvd_vbi_mem_set(vbi_start, vbi_size);
 	/*open front lpf for av ring*/
 	W_APB_BIT(ACD_REG_26, 1, 8, 1);
-	/*for vbi vcnt*/
-	W_APB_BIT(ACD_REG_26, 1, 26, 1);
 #endif
 
 }
@@ -423,7 +421,8 @@ static void tvafe_cvd2_write_mode_reg(struct tvafe_cvd2_s *cvd2,
 	/*setting for txhd snow*/
 	if (tvafe_get_snow_cfg() &&
 		(tvafe_cpu_type() == CPU_TYPE_TXHD ||
-		tvafe_cpu_type() == CPU_TYPE_TL1)) {
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2)) {
 		W_APB_BIT(CVD2_OUTPUT_CONTROL, 3, 5, 2);
 		W_APB_REG(ACD_REG_6C, 0x80500000);
 	}
@@ -924,14 +923,19 @@ void tvafe_cvd2_get_signal_status(struct tvafe_cvd2_s *cvd2)
 		!cvd2->hw_data[2].secam_detected)
 		cvd2->hw.secam_detected = false;
 
-	if (cnt_dbg_en & 1)
-		tvafe_pr_info("acc4xx_cnt=%d,acc425_cnt=%d,acc3xx_cnt=%d,acc358_cnt=%d\n",
-			cvd2->hw.acc4xx_cnt, cvd2->hw.acc425_cnt,
-			cvd2->hw.acc3xx_cnt, cvd2->hw.acc358_cnt);
+	if (cnt_dbg_en) {
+
+		tvafe_pr_info("[%d]:cvd2->hw.acc3xx_cnt =%d,cvd2->hw.acc4xx_cnt=%d,acc425_cnt=%d\n",
+			__LINE__,
+		cvd2->hw.acc3xx_cnt, cvd2->hw.acc4xx_cnt, cvd2->hw.acc425_cnt);
+		tvafe_pr_info("[%d]:cvd2->hw.fsc_358=%d,cvd2->hw.fsc_425=%d,cvd2->hw.fsc_443 =%d\n",
+			__LINE__,
+		cvd2->hw.fsc_358, cvd2->hw.fsc_425, cvd2->hw.fsc_443);
+		}
 	if (cvd2->hw.acc3xx_cnt > CNT_VLD_TH) {
 
 		if (cvd2->hw.acc358_cnt >
-			(cvd2->hw.acc3xx_cnt - (cvd2->hw.acc3xx_cnt>>3))) {
+			(cvd2->hw.acc3xx_cnt - (cvd2->hw.acc3xx_cnt>>2))) {
 
 			cvd2->hw.fsc_358 = true;
 			cvd2->hw.fsc_425 = false;
@@ -957,8 +961,8 @@ void tvafe_cvd2_get_signal_status(struct tvafe_cvd2_s *cvd2)
 	}
 	if (++ cvd2->hw_data_cur >= 3)
 		cvd2->hw_data_cur = 0;
-	if (cnt_dbg_en & 2)
-		tvafe_pr_info("[%d]:hw.fsc_358=%d,hw.fsc_425=%d,hw.fsc_443 =%d\n",
+	if (cnt_dbg_en)
+		tvafe_pr_info("[%d]:cvd2->hw.fsc_358=%d,cvd2->hw.fsc_425=%d,cvd2->hw.fsc_443 =%d\n",
 		__LINE__, cvd2->hw.fsc_358,
 		cvd2->hw.fsc_425, cvd2->hw.fsc_443);
 
@@ -1127,10 +1131,9 @@ enum tvafe_cvbs_video_e tvafe_cvd2_get_lock_status(
 {
 	enum tvafe_cvbs_video_e cvbs_lock_status = TVAFE_CVBS_VIDEO_HV_UNLOCKED;
 
-	if (!cvd2->hw.h_lock && !cvd2->hw.v_lock) {
+	if (!cvd2->hw.h_lock && !cvd2->hw.v_lock)
 		cvbs_lock_status = TVAFE_CVBS_VIDEO_HV_UNLOCKED;
-		lock_cnt = 0;
-	} else if (cvd2->hw.h_lock && cvd2->hw.v_lock) {
+	else if (cvd2->hw.h_lock && cvd2->hw.v_lock) {
 		cvbs_lock_status = TVAFE_CVBS_VIDEO_HV_LOCKED;
 		lock_cnt++;
 	} else if (cvd2->hw.h_lock) {
@@ -2015,8 +2018,16 @@ inline bool tvafe_cvd2_no_sig(struct tvafe_cvd2_s *cvd2,
 			struct tvafe_cvd2_mem_s *mem)
 {
 	static bool ret;
+	static int time_flag;
 
 	tvafe_cvd2_get_signal_status(cvd2);
+
+	/*TVAFE register status need more time to be stable.*/
+	/*for double time delay.*/
+	time_flag++;
+	if (time_flag%2 != 0)
+		return ret;
+
 	/* get signal status from HW */
 
 	/* search video mode */
@@ -2613,7 +2624,8 @@ void tvafe_snow_config(unsigned int onoff)
 {
 	if (tvafe_snow_function_flag == 0 ||
 		tvafe_cpu_type() == CPU_TYPE_TXHD ||
-		tvafe_cpu_type() == CPU_TYPE_TL1)
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2)
 		return;
 	if (onoff)
 		W_APB_BIT(CVD2_OUTPUT_CONTROL, 3, BLUE_MODE_BIT, BLUE_MODE_WID);
@@ -2624,7 +2636,8 @@ void tvafe_snow_config(unsigned int onoff)
 void tvafe_snow_config_clamp(unsigned int onoff)
 {
 	if (tvafe_cpu_type() == CPU_TYPE_TXHD ||
-		tvafe_cpu_type() == CPU_TYPE_TL1) {
+		tvafe_cpu_type() == CPU_TYPE_TL1 ||
+		tvafe_cpu_type() == CPU_TYPE_TM2) {
 		if (onoff)
 			vdin_adjust_tvafesnow_brightness();
 		return;
