@@ -46,6 +46,9 @@
 #include <trace/events/meson_atrace.h>
 
 
+#include <trace/events/meson_atrace.h>
+
+
 #define DRIVER_NAME "amvdec_vc1"
 #define MODULE_NAME "amvdec_vc1"
 
