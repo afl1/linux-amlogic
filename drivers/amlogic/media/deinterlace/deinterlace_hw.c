@@ -330,7 +330,7 @@ void calc_lmv_base_mcinfo(unsigned int vf_height, unsigned short *mcinfo_vadr)
 	if (!lmv_lock_win_en)
 		return;
 
-	if (!cpu_after_eq(MESON_CPU_MAJOR_ID_G12A)) {
+    if (!cpu_after_eq(MESON_CPU_MAJOR_ID_G12A)) {
 		pr_debug("%s: only support G12A and after chips.\n", __func__);
 		return;
 	}
@@ -540,7 +540,7 @@ void di_hw_init(bool pd_enable, bool mc_enable)
 		mc_di_param_init();
 	if (is_meson_txlx_cpu() ||
 		is_meson_txhd_cpu() ||
-		is_meson_g12a_cpu() ||
+		is_meson_g12a_cpu() || is_meson_sm1_cpu() ||
 		is_meson_g12b_cpu() ||
 		is_meson_tl1_cpu() || is_meson_tm2_cpu()) {
 		di_pre_gate_control(false, true);
@@ -996,8 +996,6 @@ void enable_afbc_input(struct vframe_s *vf)
 	}
 }
 #endif
-
-#define AFBC_DEC_SEL	(eAFBC_DEC1)
 
 u32 enable_afbc_input(struct vframe_s *vf)
 {
@@ -2707,6 +2705,12 @@ void di_post_switch_buffer(
 			DI_VSYNC_WR_MPEG_REG_BITS(MCVECRD_CTRL1,
 				di_mcvecrd_mif->canvas_num, 16, 8);
 		}
+		/*motion for current display field.*/
+		if (blend_mtn_en) {
+			DI_VSYNC_WR_MPEG_REG_BITS(MTNRD_CTRL1,
+				di_mtnprd_mif->canvas_num, 16, 8);
+			/* current field mtn canvas index.*/
+		}
 	} else {
 		if ((VSYNC_RD_MPEG_REG(VIU_MISC_CTRL0) & 0x50000) != 0x50000)
 			DI_VSYNC_WR_MPEG_REG_BITS(VIU_MISC_CTRL0, 5, 16, 3);
@@ -2723,6 +2727,12 @@ void di_post_switch_buffer(
 				di_mcvecrd_mif->canvas_num,
 				0, 10);
 		}
+		/*motion for current display field.*/
+		if (blend_mtn_en) {
+			DI_VSYNC_WR_MPEG_REG(DI_MTNRD_CTRL,
+			(di_mtnprd_mif->canvas_num << 8) | (urgent << 16));
+			/*current field mtn canvas index.*/
+		}
 	}
 
 	if (!ei_only && (di_ddr_en || di_vpp_en)) {
@@ -2735,14 +2745,6 @@ void di_post_switch_buffer(
 				(di_buf2_mif->canvas0_addr2 << 16) |
 				(di_buf2_mif->canvas0_addr1 << 8) |
 				(di_buf2_mif->canvas0_addr0 << 0));
-	}
-
-	/* motion for current display field. */
-	if (blend_mtn_en) {
-		DI_VSYNC_WR_MPEG_REG(DI_MTNRD_CTRL,
-(di_mtnprd_mif->canvas_num << 8) | (urgent << 16)
-	 ); /* current field mtn canvas index. */
-
 	}
 
 	if (di_ddr_en) {
