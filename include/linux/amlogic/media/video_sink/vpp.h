@@ -35,6 +35,7 @@ extern bool super_scaler;
 #define VPP_FLAG_PORTRAIT_MODE      0x00040000
 #define VPP_FLAG_VSCALE_DISABLE     0x00080000
 #define VPP_FLAG_MORE_LOG     0x00100000
+#define VPP_FLAG_FORCE_NO_COMPRESS     0x00200000
 
 #define IDX_H           (2 << 8)
 #define IDX_V_Y         (1 << 13)
@@ -53,6 +54,7 @@ enum vppfilter_state_e {
 	VppFilter_Fail = -1,
 	VppFilter_Success = 0,
 	VppFilter_Success_and_Changed,
+	VppFilter_Changed_but_Hold,
 };
 
 enum f2v_vphase_type_e {
@@ -191,6 +193,8 @@ struct disp_info_s {
 
 	bool afbc_support;
 	bool pps_support;
+
+	bool need_no_compress;
 };
 
 enum select_scaler_path_e {
