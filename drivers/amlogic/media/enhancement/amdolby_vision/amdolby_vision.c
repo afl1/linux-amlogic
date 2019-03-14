@@ -41,8 +41,6 @@
 #include <linux/amlogic/media/codec_mm/codec_mm.h>
 #include <linux/dma-contiguous.h>
 #include <linux/amlogic/iomap.h>
-#include <linux/poll.h>
-#include <linux/workqueue.h>
 #include "amdolby_vision.h"
 
 #include <linux/device.h>
@@ -71,7 +69,6 @@ struct amdolby_vision_dev_s {
 	dev_t                       devno;
 	struct device               *dev;
 	struct class                *clsp;
-	wait_queue_head_t	dv_queue;
 };
 static struct amdolby_vision_dev_s amdolby_vision_dev;
 struct dv_device_data_s dv_meson_dev;
@@ -380,7 +377,7 @@ uint16_t L2PQ_500_4000[] = {
 static uint32_t tv_max_lin = 200;
 static uint16_t tv_max_pq = 2372;
 
-static unsigned int panel_max_lumin = 350;
+static unsigned int panel_max_lumin;
 module_param(panel_max_lumin, uint, 0664);
 MODULE_PARM_DESC(panel_max_lumin, "\n panel_max_lumin\n");
 
@@ -1208,24 +1205,6 @@ static int WRITE_VPP_DV_REG(u32 adr, const u32 val)
 	adr = addr_map(adr);
 	WRITE_VPP_REG(adr, val);
 	return 0;
-}
-
-void amdolby_vision_wakeup_queue(void)
-{
-	struct amdolby_vision_dev_s *devp = &amdolby_vision_dev;
-
-	wake_up(&devp->dv_queue);
-}
-
-static unsigned int amdolby_vision_poll(struct file *file, poll_table *wait)
-{
-	struct amdolby_vision_dev_s *devp = file->private_data;
-	unsigned int mask = 0;
-
-	poll_wait(file, &devp->dv_queue, wait);
-	mask = (POLLIN | POLLRDNORM);
-
-	return mask;
 }
 
 static int is_graphics_output_off(void)
@@ -2119,15 +2098,18 @@ static int dolby_core2_set(
 	if (stb_core_setting_update_flag & FLAG_CHANGE_TC2)
 		set_lut = true;
 
-	VSYNC_WR_MPEG_REG(DOLBY_CORE2A_CLKGATE_CTRL, 0);
-	VSYNC_WR_MPEG_REG(DOLBY_CORE2A_SWAP_CTRL0, 0);
-	if (is_meson_gxm() || is_meson_g12() || reset) {
-		VSYNC_WR_MPEG_REG(DOLBY_CORE2A_SWAP_CTRL1,
+	VSYNC_WR_DV_REG(DOLBY_CORE2A_CLKGATE_CTRL, 0);
+	VSYNC_WR_DV_REG(DOLBY_CORE2A_SWAP_CTRL0, 0);
+	if (is_meson_box() || is_meson_tm2_stbmode()  || reset) {
+		VSYNC_WR_DV_REG(DOLBY_CORE2A_SWAP_CTRL1,
 			((hsize + g_htotal_add) << 16)
 			| (vsize + g_vtotal_add + g_vsize_add));
 		VSYNC_WR_DV_REG(DOLBY_CORE2A_SWAP_CTRL2,
 			(hsize << 16) | (vsize + g_vsize_add));
 	}
+	if (debug_dolby & 2)
+		pr_dolby_dbg("g_hpotch %x, g_vpotch %x\n",
+		g_hpotch, g_vpotch);
 	VSYNC_WR_DV_REG(DOLBY_CORE2A_SWAP_CTRL3,
 		(g_hwidth << 16) | g_vwidth);
 	VSYNC_WR_DV_REG(DOLBY_CORE2A_SWAP_CTRL4,
@@ -2435,7 +2417,6 @@ static void apply_stb_core_settings(
 #endif
 	u32 graphics_w = osd_graphic_width;
 	u32 graphics_h = osd_graphic_height;
-
 	if (is_dolby_vision_stb_mode()
 		&& (dolby_vision_flags & FLAG_CERTIFICAION)) {
 		graphics_w = dv_cert_graphic_width;
@@ -2457,7 +2438,23 @@ static void apply_stb_core_settings(
 			g_vpotch = 0x60;
 		else
 			g_vpotch = 0x20;
+	} else if (is_meson_g12()) {
+		if (vinfo) {
+			if (debug_dolby & 2)
+				pr_dolby_dbg("vinfo %d %d %d\n",
+					vinfo->width,
+					vinfo->height,
+					vinfo->field_height);
+			if ((vinfo->width < 1280) &&
+				(vinfo->height < 720) &&
+				(vinfo->field_height < 720))
+				g_vpotch = 0x60;
+			else
+				g_vpotch = 0x8;
+		} else
+			g_vpotch = 0x8;
 	}
+
 	if (mask & 1) {
 		if (is_meson_txlx_stbmode()
 			|| force_stb_mode) {
@@ -3232,9 +3229,6 @@ void enable_dolby_vision(int enable)
 					/* 16 core1 bl bypass */
 					(1 << 0),
 					16, 2);
-				if (is_meson_tm2_tvmode())
-					VSYNC_WR_DV_REG_BITS(
-						DOLBY_PATH_CTRL, 3, 0, 2);
 #ifdef V1_5
 				if (p_funcs_tv) /* destroy ctx */
 					p_funcs_tv->tv_control_path(
@@ -4963,7 +4957,7 @@ static void calculate_panel_max_pq(
 			max_lin = (max_lin / 100) * 100 + 500;
 			max_pq = L2PQ_500_4000[(max_lin - 500) / 100];
 		}
-		pr_dolby_dbg("panel max lumin changed from %d(%d) to %d(%d)\n",
+		pr_info("panel max lumin changed from %d(%d) to %d(%d)\n",
 			tv_max_lin, tv_max_pq, max_lin, max_pq);
 		tv_max_lin = max_lin;
 		tv_max_pq = max_pq;
@@ -5022,6 +5016,7 @@ int dolby_vision_parse_metadata(
 	u32 graphic_max = 100; /* 1 */
 	int ret_flags = 0;
 	int ret = -1;
+	bool melFlag = false;
 
 	memset(&req, 0, (sizeof(struct provider_aux_req_s)));
 	memset(&el_req, 0, (sizeof(struct provider_aux_req_s)));
@@ -5149,6 +5144,9 @@ int dolby_vision_parse_metadata(
 				vf_notify_provider_by_name("dvbldec",
 					VFRAME_EVENT_RECEIVER_DOLBY_BYPASS_EL,
 					(void *)&req);
+			if (ret_flags == 1) {
+				melFlag = true;
+			}
 			if (!is_dv_standard_es(req.dv_enhance_exist,
 				ret_flags, w)) {
 				src_format = FORMAT_SDR;
@@ -5342,13 +5340,8 @@ int dolby_vision_parse_metadata(
 		return -1;
 	}
 
-	if (tv_mode) {
-		if (!p_funcs_tv)
-			return -1;
-	} else {
-		if (!p_funcs_stb)
-			return -1;
-	}
+	if (!p_funcs_stb && !p_funcs_tv)
+		return -1;
 
 	/* TV core */
 	if (is_meson_tvmode() && !force_stb_mode) {
@@ -5740,7 +5733,7 @@ int dolby_vision_parse_metadata(
 		graphic_max * 10000,
 		dolby_vision_target_min,
 		dolby_vision_target_max[src_format][dst_format] * 10000,
-		(!el_flag) ||
+		(!el_flag && !melFlag) ||
 		(dolby_vision_flags & FLAG_DISABLE_COMPOSER),
 		&hdr10_param,
 		&new_dovi_setting);
@@ -6023,11 +6016,6 @@ int dolby_vision_process(struct vframe_s *vf, u32 display_size,
 	if (!is_meson_box() && !is_meson_txlx() && !is_meson_tm2())
 		return -1;
 
-	if ((dolby_vision_enable == 1) && (tv_mode == 1)) {
-		amdolby_vision_wakeup_queue();
-		pr_dolby_dbg("wake up dv status queue\n");
-	}
-
 	if (dolby_vision_flags & FLAG_CERTIFICAION) {
 		if (vf) {
 			h_size = (vf->type & VIDTYPE_COMPRESS) ?
@@ -6106,13 +6094,11 @@ int dolby_vision_process(struct vframe_s *vf, u32 display_size,
 		}
 	}
 #endif
-
 	if (!vf) {
 		if (dolby_vision_flags & FLAG_TOGGLE_FRAME)
 			dolby_vision_parse_metadata(
 				NULL, 1, false);
 	}
-
 	if (dolby_vision_mode == DOLBY_VISION_OUTPUT_MODE_BYPASS) {
 		if (vinfo && sink_support_dolby_vision(vinfo))
 			dolby_vision_set_toggle_flag(1);
@@ -6701,7 +6687,6 @@ static const struct file_operations amdolby_vision_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = amdolby_vision_compat_ioctl,
 #endif
-	.poll = amdolby_vision_poll,
 };
 
 static void parse_param_amdolby_vision(char *buf_orig, char **parm)
@@ -6948,7 +6933,6 @@ static int amdolby_vision_probe(struct platform_device *pdev)
 	}
 
 	dolby_vision_init_receiver(pdev);
-	init_waitqueue_head(&devp->dv_queue);
 	pr_info("%s: ok\n", __func__);
 	return 0;
 
