@@ -1,5 +1,5 @@
 /*
- * arch/arm64/boot/dts/amlogic/mesontm2.dtsi
+ * arch/arm64/boot/dts/amlogic/mesontl1.dtsi
  *
  * Copyright (C) 2018 Amlogic, Inc. All rights reserved.
  *
@@ -23,8 +23,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/pwm/meson.h>
 #include <dt-bindings/clock/amlogic,tl1-clkc.h>
-#include <dt-bindings/clock/amlogic,tm2-audio-clk.h>
-#include <dt-bindings/phy/phy-amlogic-pcie.h>
+#include <dt-bindings/clock/amlogic,tl1-audio-clk.h>
 #include "mesong12a-bifrost.dtsi"
 #include <dt-bindings/iio/adc/amlogic-saradc.h>
 / {
@@ -190,10 +189,10 @@
 	};
 
 	mailbox: mhu@ff63c400 {
-		status = "okay";
+		status = "disabled";
 		compatible = "amlogic, meson_mhu";
 		reg = <0x0 0xff63c400 0x0 0x4c>,   /* MHU registers */
-		      <0x0 0xfffdf000 0x0 0x800>;   /* Payload area */
+		      <0x0 0xfffd7000 0x0 0x800>;   /* Payload area */
 		interrupts = <0 209 1>,   /* low priority interrupt */
 			     <0 210 1>;   /* high priority interrupt */
 		#mbox-cells = <1>;
@@ -231,12 +230,12 @@
 		#clock-cells = <0>;
 	};
 
-	aml_pm {
+	meson_suspend: pm {
 		compatible = "amlogic, pm";
+		/*gxbaby-suspend;*/
 		status = "okay";
-		device_name = "aml_pm";
-		debug_reg = <0xff8000a8>;
-		exit_reg = <0xff80023c>;
+		reg = <0x0 0xff8000a8 0x0 0x4>,
+			<0x0 0xff80023c 0x0 0x4>;
 	};
 
 	cpuinfo {
@@ -256,11 +255,30 @@
 		status = "okay";
 		reg = <0x0 0xFF6345E0 0x0 4>;
 		reg-names = "PREG_STICKY_REG8";
-		store_device = "data";
+	};
+
+	securitykey {
+		compatible = "amlogic, securitykey";
+		status = "disabled";
+		storage_query = <0x82000060>;
+		storage_read = <0x82000061>;
+		storage_write = <0x82000062>;
+		storage_tell = <0x82000063>;
+		storage_verify = <0x82000064>;
+		storage_status = <0x82000065>;
+		storage_list = <0x82000067>;
+		storage_remove = <0x82000068>;
+		storage_in_func = <0x82000023>;
+		storage_out_func = <0x82000024>;
+		storage_block_func = <0x82000025>;
+		storage_size_func = <0x82000027>;
+		storage_set_enctype = <0x8200006A>;
+		storage_get_enctype = <0x8200006B>;
+		storage_version = <0x8200006C>;
 	};
 
 	vpu {
-		compatible = "amlogic, vpu-tm2";
+		compatible = "amlogic, vpu-tl1";
 		status = "okay";
 		clocks = <&clkc CLKID_VAPB_MUX>,
 			<&clkc CLKID_VPU_INTR>,
@@ -380,7 +398,6 @@
 		clock-src = "usb3.0";
 		clocks = <&clkc CLKID_USB_GENERAL>;
 		clock-names = "dwc_general";
-		snps,quirk-frame-length-adjustment = <0x20>;
 	};
 
 	usb2_phy_v2: usb2phy@ffe09000 {
@@ -399,51 +416,19 @@
 		pll-setting-6 = <0x78000>;
 		pll-setting-7 = <0xe0004>;
 		pll-setting-8 = <0xe000c>;
-		version = <2>;
-		pwr-ctl = <1>;
-		u2-ctrl-sleep-shift = <17>;
-		u2-hhi-mem-pd-shift = <30>;
-		u2-hhi-mem-pd-mask = <0x3>;
-		u2-ctrl-iso-shift = <17>;
+		version = <1>;
 	};
 
 	usb3_phy_v2: usb3phy@ffe09080 {
-		compatible = "amlogic, amlogic-new-usb3-v3";
-		status = "disable";
-		reg = <0x0 0xffe09080 0x0 0x20>;
-		phy0-reg = <0xff646000>;
-		phy0-reg-size = <0x2000>;
-		phy1-reg = <0xff65c000>;
-		phy1-reg-size = <0x2000>;
-		reset-reg = <0xffd01008>;
-		reset-reg-size = <0x100>;
-		clocks = <&clkc CLKID_PCIE0_GATE
-				&clkc CLKID_PCIE_PLL
-				&clkc CLKID_PCIE1_GATE>;
-		clock-names = "pcie0_gate",
-				"pcie_refpll",
-				"pcie1_gate";
-		pwr-ctl = <1>;
-		u30-ctrl-sleep-shift = <18>;
-		u30-hhi-mem-pd-shift = <26>;
-		u30-hhi-mem-pd-mask = <0xf>;
-		u30-ctrl-iso-shift = <18>;
-		usb30-ctrl-a-rst-bit = <12>;
-		u31-ctrl-sleep-shift = <20>;
-		u31-hhi-mem-pd-shift = <4>;
-		u31-hhi-mem-pd-mask = <0xf>;
-		u31-ctrl-iso-shift = <20>;
-		usb31-ctrl-a-rst-bit = <28>;
-	};
-
-	usb_otg: usbotg@ffe09080 {
-		compatible = "amlogic, amlogic-new-otg";
+		compatible = "amlogic, amlogic-new-usb3-v2";
 		status = "disabled";
+		reg = <0x0 0xffe09080 0x0 0x20>;
+		phy-reg = <0xff646000>;
+		phy-reg-size = <0x2000>;
 		usb2-phy-reg = <0xffe09000>;
-		usb2-phy-reg-size = <0x100>;
+		usb2-phy-reg-size = <0x80>;
 		interrupts = <0 16 4>;
 	};
-
 
 	dwc2_a: dwc2_a@ff400000 {
 		compatible = "amlogic, dwc2";
@@ -467,7 +452,6 @@
 		/** phy-interface: 0x0: amlogic-v1 phy, 0x1: synopsys phy **/
 		/**                0x2: amlogic-v2 phy                    **/
 		phy-interface = <0x2>;
-		phy-otg	= <0x1>;
 		clocks = <&clkc CLKID_USB_GENERAL
 					&clkc CLKID_USB1_TO_DDR>;
 		clock-names = "usb_general",
@@ -510,49 +494,49 @@
 		compatible = "pwm-regulator";
 		pwms = <&pwm_AO_cd MESON_PWM_1 1500 0>;
 		regulator-name = "vddcpu0";
-		regulator-min-microvolt = <690000>;
-		regulator-max-microvolt = <1050000>;
+		regulator-min-microvolt = <689000>;
+		regulator-max-microvolt = <1049000>;
 		regulator-always-on;
 		max-duty-cycle = <1500>;
 		/* Voltage Duty-Cycle */
-		voltage-table = <1050000 0>,
-				<1040000 3>,
-				<1030000 6>,
-				<1020000 8>,
-				<1010000 11>,
-				<1000000 14>,
-				<990000 17>,
-				<980000 20>,
-				<970000 23>,
-				<960000 26>,
-				<950000 29>,
-				<940000 31>,
-				<930000 34>,
-				<920000 37>,
-				<910000 40>,
-				<900000 43>,
-				<890000 45>,
-				<880000 48>,
-				<870000 51>,
-				<860000 54>,
-				<850000 56>,
-				<840000 59>,
-				<830000 62>,
-				<820000 65>,
-				<810000 68>,
-				<800000 70>,
-				<790000 73>,
-				<780000 76>,
-				<770000 79>,
-				<760000 81>,
-				<750000 84>,
-				<740000 87>,
-				<730000 89>,
-				<720000 92>,
-				<710000 95>,
-				<700000 98>,
-				<690000 100>;
-		status = "okay";
+		voltage-table = <1049000 0>,
+				<1039000 3>,
+				<1029000 6>,
+				<1019000 8>,
+				<1009000 11>,
+				<999000 14>,
+				<989000 17>,
+				<979000 20>,
+				<969000 23>,
+				<959000 26>,
+				<949000 29>,
+				<939000 31>,
+				<929000 34>,
+				<919000 37>,
+				<909000 40>,
+				<899000 43>,
+				<889000 45>,
+				<879000 48>,
+				<869000 51>,
+				<859000 54>,
+				<849000 56>,
+				<839000 59>,
+				<829000 62>,
+				<819000 65>,
+				<809000 68>,
+				<799000 70>,
+				<789000 73>,
+				<779000 76>,
+				<769000 79>,
+				<759000 81>,
+				<749000 84>,
+				<739000 87>,
+				<729000 89>,
+				<719000 92>,
+				<709000 95>,
+				<699000 98>,
+				<689000 100>;
+				status = "disabled";
 	};
 
 	aml_dma {
@@ -580,12 +564,6 @@
 		#size-cells = <2>;
 		reg = <0x0 0xff630218 0x0 0x4>;
 		quality = /bits/ 16 <1000>;
-	};
-
-	power_ctrl: power_ctrl@ff8000e8 {
-		compatible = "amlogic, sm1-powerctrl";
-		reg = <0x0 0xff8000e8 0x0 0x10>,
-		      <0x0 0xff63c100 0x0 0x10>;
 	};
 
 	soc {
@@ -616,7 +594,7 @@
 			ranges = <0x0 0x0 0x0 0xff600000 0x0 0x10000>;
 
 			clkaudio:audio_clocks {
-				compatible = "amlogic, tm2-audio-clocks";
+				compatible = "amlogic, tl1-audio-clocks";
 				#clock-cells = <1>;
 				reg = <0x0 0x0 0x0 0xb0>;
 			};
@@ -658,22 +636,13 @@
 				reg = <0x0 0xFF601400 0x0 0x400>;
 			};
 			eqdrc_base {
-				reg = <0x0 0xFF602000 0x0 0x1000>;
+				reg = <0x0 0xFF602000 0x0 0x2000>;
 			};
 			reset_base {
 				reg = <0x0 0xFFD01000 0x0 0x1000>;
 			};
 			vad_base {
-				reg = <0x0 0xFF601800 0x0 0x400>;
-			};
-			earcrx_cdmc_base {
-				reg = <0x0 0xFF603800 0x0 0x30>;
-			};
-			earcrx_dmac_base {
-				reg = <0x0 0xFF603C00 0x0 0x20>;
-			};
-			earcrx_top_base {
-				reg = <0x0 0xFF603E00 0x0 0x10>;
+				reg = <0x0 0xFF601800 0x0 0x800>;
 			};
 		};
 
@@ -740,7 +709,7 @@
 
 			gpio_intc: interrupt-controller@f080 {
 				compatible = "amlogic,meson-gpio-intc",
-						"amlogic,meson-tm2-gpio-intc";
+						"amlogic,meson-tl1-gpio-intc";
 				reg = <0x0 0xf080 0x0 0x10>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
@@ -910,12 +879,11 @@
 				max_frame_time = <200>;
 			};
 
-			irblaster: meson-irblaster@14c {
+			meson_irblaster: irblaster@14c {
 				compatible = "amlogic, meson_irblaster";
 				reg = <0x0 0x14c 0x0 0x10>,
 					<0x0 0x40 0x0 0x4>;
-				#irblaster-cells = <2>;
-				interrupts = <GIC_SPI 198 IRQ_TYPE_EDGE_RISING>;
+				interrupts = <0 198 1>;
 				status = "disabled";
 			};
 
@@ -943,7 +911,7 @@
 
 		ion_dev {
 			compatible = "amlogic, ion_dev";
-			status = "okay";
+			status = "disabled";
 			memory-region = <&ion_cma_reserved>;
 		};/* end of ion_dev*/
 	}; /* end of soc*/
@@ -1141,111 +1109,9 @@
 		pinctrl-0 = <&c_uart_pins>;
 	};
 
-
-	pcie_A: pcieA@fc000000 {
-		compatible = "amlogic, amlogic-pcie-v2", "snps,dw-pcie";
-		reg = <0x0 0xfc000000 0x0 0x400000
-			0x0 0xff648000 0x0 0x2000
-			0x0 0xfc400000 0x0 0x200000
-			0x0 0xff646000 0x0 0x2000
-			0x0 0xffd01080 0x0 0x10>;
-		reg-names = "elbi", "cfg", "config", "phy", "reset";
-		interrupts = <0 221 0>;
-		#interrupt-cells = <1>;
-		bus-range = <0x0 0xff>;
-		#address-cells = <3>;
-		#size-cells = <2>;
-		interrupt-map-mask = <0 0 0 0>;
-		interrupt-map = <0 0 0 0 &gic GIC_SPI 223 IRQ_TYPE_EDGE_RISING>;
-		device_type = "pci";
-		ranges = <0x81000000 0 0 0 0xfc600000 0x0 0x100000
-			/* downstream I/O */
-			0x82000000 0 0xfc700000 0x0 0xfc700000 0 0x1900000>;
-			/* non-prefetchable memory */
-		num-lanes = <1>;
-		pcie-num = <1>;
-
-		clocks = <&clkc CLKID_PCIE0_GATE
-			&clkc CLKID_PCIE1
-			&clkc CLKID_PCIE0PHY>;
-		clock-names = "pcie_refpll",
-				"pcie",
-				"pcie_phy";
-		/*reset-gpio-type 0:Shared pad(no reset)1:OD pad2:Normal pad*/
-		gpio-type = <2>;
-		pcie-apb-rst-bit = <15>;
-		pcie-phy-rst-bit = <14>;
-		pcie-ctrl-a-rst-bit = <12>;
-		pwr-ctl = <1>;
-		pcie-ctrl-sleep-shift = <18>;
-		pcie-hhi-mem-pd-shift = <26>;
-		pcie-hhi-mem-pd-mask = <0xf>;
-		pcie-ctrl-iso-shift = <18>;
-		status = "disabled";
-	};
-
-	pcie_B: pcieB@fc000000 {
-		compatible = "amlogic, amlogic-pcie-v2", "snps,dw-pcie";
-		reg = <0x0 0xfA000000 0x0 0x400000
-			0x0 0xff65E000 0x0 0x2000
-			0x0 0xfA400000 0x0 0x200000
-			0x0 0xff65C000 0x0 0x2000
-			0x0 0xffd01080 0x0 0x10>;
-		reg-names = "elbi", "cfg", "config", "phy",
-				"reset";
-		interrupts = <0 229 0>;
-		#interrupt-cells = <1>;
-		bus-range = <0x0 0xff>;
-		#address-cells = <3>;
-		#size-cells = <2>;
-		interrupt-map-mask = <0 0 0 0>;
-		interrupt-map = <0 0 0 0 &gic GIC_SPI 231 IRQ_TYPE_EDGE_RISING>;
-		device_type = "pci";
-		ranges = <0x81000000 0 0 0 0xfA600000 0x0 0x100000
-			/* downstream I/O */
-			0x82000000 0 0xfA700000 0x0 0xfA700000 0 0x1900000>;
-			/* non-prefetchable memory */
-		num-lanes = <1>;
-		pcie-num = <1>;
-
-		clocks = <&clkc CLKID_PCIE1_GATE
-			&clkc CLKID_PCIE1
-			&clkc CLKID_PCIE1PHY>;
-		clock-names = "pcie_refpll",
-				"pcie",
-				"pcie_phy";
-		/*reset-gpio-type 0:Shared pad(no reset)1:OD pad2:Normal pad*/
-		gpio-type = <2>;
-		pcie-apb-rst-bit = <30>;
-		pcie-phy-rst-bit = <29>;
-		pcie-ctrl-a-rst-bit = <28>;
-		pwr-ctl = <1>;
-		pcie-ctrl-sleep-shift = <20>;
-		pcie-hhi-mem-pd-shift = <4>;
-		pcie-hhi-mem-pd-mask = <0xf>;
-		pcie-ctrl-iso-shift = <20>;
-		status = "disabled";
-	};
-	galcore {
-		compatible = "amlogic, galcore";
-		dev_name = "galcore";
-		status = "disabled";
-		interrupts = <0 147 4>;
-		interrupt-names = "galcore";
-		reg = <0x0 0xff100000 0x0 0x800
-			/*reg base value:0xff100000 */
-			0x0 0xff000000 0x0 0x400000
-			/*Sram bse value:0xff000000*/
-			0x0 0xff63c118 0x0 0x0
-			0x0 0xff63c11c 0x0 0x0
-			/*0xff63c118,0xff63c11c :nanoq mem regs*/
-			0x0 0xffd01088 0x0 0x0
-			/*0xffd01088:reset reg*/
-			>;
-	};
 	sd_emmc_c: emmc@ffe07000 {
 		status = "disabled";
-		compatible = "amlogic, meson-mmc-tm2";
+		compatible = "amlogic, meson-mmc-tl1";
 		reg = <0x0 0xffe07000 0x0 0x800>;
 		interrupts = <0 191 1>;
 		pinctrl-names = "emmc_clk_cmd_pins", "emmc_all_pins";
@@ -1254,9 +1120,10 @@
 		clocks = <&clkc CLKID_SD_EMMC_C>,
 			   <&clkc CLKID_SD_EMMC_C_P0_COMP>,
 			   <&clkc CLKID_FCLK_DIV2>,
-			   <&clkc CLKID_FCLK_DIV2P5>,
+			   <&clkc CLKID_FCLK_DIV5>,
+			   <&clkc CLKID_GP0_PLL>,
 			   <&xtal>;
-		clock-names = "core","clkin0","clkin1","clkin2","xtal";
+		clock-names = "core","clkin0","clkin1","clkin2","clkin3","xtal";
 
 		bus-width = <8>;
 		cap-sd-highspeed;
@@ -1366,23 +1233,13 @@
 			0 32 1
 			0 43 1
 			0 44 1
-			0 45 1
-			0 74 1>;
+			0 45 1>;
 		interrupt-names = "vsync",
 			"demux",
 			"parser",
 			"mailbox_0",
 			"mailbox_1",
-			"mailbox_2",
-			"parser_b";
-	};
-
-	amvenc_avc{
-		compatible = "amlogic, amvenc_avc";
-		dev_name = "amvenc_avc";
-		status = "okay";
-		interrupts = <0 45 1>;
-		interrupt-names = "mailbox_2";
+			"mailbox_2";
 	};
 
 	canvas: canvas {
@@ -1428,7 +1285,7 @@
 	};
 
 	meson_fb: fb {
-		compatible = "amlogic, meson-tm2";
+		compatible = "amlogic, meson-tl1";
 		memory-region = <&logo_reserved>;
 		status = "disabled";
 		interrupts = <0 3 1
@@ -1446,7 +1303,7 @@
 	};
 
 	ge2d {
-		compatible = "amlogic, ge2d-sm1";
+		compatible = "amlogic, ge2d-g12a";
 		status = "okay";
 		interrupts = <0 146 1>;
 		interrupt-names = "ge2d";
@@ -1757,7 +1614,7 @@
 			function = "emmc";
 			input-enable;
 			bias-pull-up;
-			drive-strength = <2>;
+			drive-strength = <3>;
 		};
 	};
 
@@ -1776,7 +1633,7 @@
 			function = "emmc";
 			input-enable;
 			bias-pull-up;
-			drive-strength = <2>;
+			drive-strength = <3>;
 		};
 	};
 
@@ -1786,7 +1643,7 @@
 			function = "emmc";
 			input-enable;
 			bias-pull-down;
-			drive-strength = <2>;
+			drive-strength = <3>;
 		};
 	};
 
