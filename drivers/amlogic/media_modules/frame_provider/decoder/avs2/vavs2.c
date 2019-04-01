@@ -56,9 +56,7 @@
 #include "../utils/firmware.h"
 #include "../../../common/chips/decoder_cpu_ver_info.h"
 #include <linux/amlogic/tee.h>
-#include <trace/events/meson_atrace.h>
 
-#define I_ONLY_SUPPORT
 #define MIX_STREAM_SUPPORT
 #define G12A_BRINGUP_DEBUG
 #define CONSTRAIN_MAX_BUF_NUM
@@ -114,7 +112,6 @@
 
 /*cmd*/
 #define AVS2_10B_DISCARD_NAL                 0xf0
-#define AVS2_SEARCH_NEW_PIC                  0xf1
 #define AVS2_ACTION_ERROR                    0xfe
 #define HEVC_ACTION_ERROR                    0xfe
 #define AVS2_ACTION_DONE                     0xff
@@ -261,7 +258,7 @@ static u32 again_threshold = 0x40;
 					  4, (1/2):(1/2) ratio
 					0x10, double write only
 */
-static u32 double_write_mode = 0x200;
+static u32 double_write_mode;
 
 #define DRIVER_NAME "amvdec_avs2"
 #define MODULE_NAME "amvdec_avs2"
@@ -751,9 +748,6 @@ struct AVS2Decoder_s {
 	u32 pre_parser_wr_ptr;
 	int need_cache_size;
 	u64 sc_start_time;
-#ifdef I_ONLY_SUPPORT
-	u32 i_only;
-#endif
 	int frameinfo_enable;
 	struct vframe_qos_s vframe_qos;
 };
@@ -881,15 +875,6 @@ static int get_double_write_mode(struct AVS2Decoder_s *dec)
 			dw = 0x1; /*1:1*/
 
 		return dw;
-	} else if (valid_dw_mode == 0x200) {
-		int w = dec->avs2_dec.img.width;
-		int h = dec->avs2_dec.img.height;
-		if (w > 4096 && h > 2176)
-			dw = 0x4; /*1:2*/
-		else
-			dw = 0x0; /*off*/
-
-		return dw;
 	}
 
 	return valid_dw_mode;
@@ -907,16 +892,6 @@ static int get_double_write_mode_init(struct AVS2Decoder_s *dec)
 			dw = 0x4; /*1:2*/
 		else
 			dw = 0x1; /*1:1*/
-
-		return dw;
-	} else if (valid_dw_mode == 0x200) {
-		u32 dw;
-		int w = dec->init_pic_w;
-		int h = dec->init_pic_h;
-		if (w > 4096 && h > 2176)
-			dw = 0x4; /*1:2*/
-		else
-			dw = 0x0; /*off*/
 
 		return dw;
 	}
@@ -4602,7 +4577,6 @@ static int avs2_prepare_display_buf(struct AVS2Decoder_s *dec)
 			set_vframe(dec, vf, pic, 0);
 			decoder_do_frame_check(hw_to_vdec(dec), vf);
 			kfifo_put(&dec->display_q, (const struct vframe_s *)vf);
-			ATRACE_COUNTER(MODULE_NAME, vf->pts);
 
 	#ifndef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
 			/*count info*/
@@ -5654,11 +5628,6 @@ static irqreturn_t vavs2_isr_thread_fn(int irq, void *data)
 			dec->slice_idx++;
 
 		PRINT_LINE();
-#ifdef I_ONLY_SUPPORT
-		if ((start_code == PB_PICTURE_START_CODE) &&
-			(dec->i_only & 0x2))
-			ret = -2;
-#endif
 #ifdef AVS2_10B_MMU
 		if (ret >= 0) {
 			ret = avs2_alloc_mmu(dec,
@@ -6239,21 +6208,6 @@ static void vavs2_prot_init(struct AVS2Decoder_s *dec)
 
 }
 
-#ifdef I_ONLY_SUPPORT
-static int vavs2_set_trickmode(struct vdec_s *vdec, unsigned long trickmode)
-{
-	struct AVS2Decoder_s *dec =
-		(struct AVS2Decoder_s *)vdec->private;
-	if (i_only_flag & 0x100)
-		return 0;
-	if (trickmode == TRICKMODE_I)
-		dec->i_only = 0x3;
-	else if (trickmode == TRICKMODE_NONE)
-		dec->i_only = 0x0;
-	return 0;
-}
-#endif
-
 static int vavs2_local_init(struct AVS2Decoder_s *dec)
 {
 	int i;
@@ -6291,15 +6245,7 @@ TODO:FOR VERSION
 
 	if (dec->frame_dur == 0)
 		dec->frame_dur = 96000 / 24;
-#ifdef I_ONLY_SUPPORT
-	if (i_only_flag & 0x100)
-		dec->i_only = i_only_flag & 0xff;
-	else if ((unsigned long) dec->vavs2_amstream_dec_info.param
-		& 0x08)
-		dec->i_only = 0x7;
-	else
-		dec->i_only = 0x0;
-#endif
+
 	INIT_KFIFO(dec->display_q);
 	INIT_KFIFO(dec->newframe_q);
 
@@ -6357,7 +6303,7 @@ static s32 vavs2_init(struct vdec_s *vdec)
 
 		return 0;
 	}
-	hevc_enable_DMC(hw_to_vdec(dec));
+
 	amhevc_enable();
 
 	ret = amhevc_loadmc_ex(VFORMAT_AVS2, NULL, fw->data);
@@ -7067,7 +7013,7 @@ static void run(struct vdec_s *vdec, unsigned long mask,
 
 	vdec_enable_input(vdec);
 
-	WRITE_VREG(HEVC_DEC_STATUS_REG, AVS2_SEARCH_NEW_PIC);
+	WRITE_VREG(HEVC_DEC_STATUS_REG, AVS2_ACTION_DONE);
 
 	if (vdec_frame_based(vdec) && dec->chunk) {
 		if (debug & PRINT_FLAG_VDEC_DATA)
@@ -7294,9 +7240,7 @@ static int ammvdec_avs2_probe(struct platform_device *pdev)
 	}
 	pdata->private = dec;
 	pdata->dec_status = vavs2_dec_status;
-#ifdef I_ONLY_SUPPORT
-	pdata->set_trickmode = vavs2_set_trickmode;
-#endif
+	/* pdata->set_trickmode = set_trickmode; */
 	pdata->run_ready = run_ready;
 	pdata->run = run;
 	pdata->reset = reset;

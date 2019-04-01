@@ -58,14 +58,10 @@
 #include <linux/uaccess.h>
 
 
-#include <trace/events/meson_atrace.h>
-
-
 #define DRIVER_NAME "amvdec_h264"
 #define MODULE_NAME "amvdec_h264"
 #define MEM_NAME "codec_264"
 #define HANDLE_H264_IRQ
-#define ENABLE_SEI_ITU_T35
 
 #if 0
 /* currently, only iptv supports this function*/
@@ -449,7 +445,7 @@ static int ge2d_canvas_dup(struct canvas_s *srcy, struct canvas_s *srcu,
 		return -1;
 	}
 
-	stretchblt_noalpha_noblk(ge2d_videoh264_context, 0, 0, srcy->width,
+	stretchblt_noalpha(ge2d_videoh264_context, 0, 0, srcy->width,
 			srcy->height, 0, 0, srcy->width, srcy->height);
 
 	return 0;
@@ -520,7 +516,6 @@ static void prepare_display_q(void)
 		if (kfifo_get(&delay_display_q, &vf)) {
 			kfifo_put(&display_q,
 				(const struct vframe_s *)vf);
-			ATRACE_COUNTER(MODULE_NAME, vf->pts);
 			vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 		}
@@ -2918,8 +2913,7 @@ static void vh264_isr(void)
 
 				h264_pts_count++;
 			} else {
-				/* non-idr or non-I frame will set pts_valid */
-				if (!idr_flag && !(slice_type == SLICE_TYPE_I))
+				if (!idr_flag)
 					pts_valid = 0;
 			}
 
@@ -3918,12 +3912,11 @@ static s32 vh264_init(void)
 #endif
 
 	if (frame_dur != 0) {
-		if (!is_reset) {
+		if (!is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 					VFRAME_EVENT_PROVIDER_FR_HINT,
 					(void *)((unsigned long)frame_dur));
-			fr_hint_status = VDEC_HINTED;
-		}
+		fr_hint_status = VDEC_HINTED;
 	} else
 		fr_hint_status = VDEC_NEED_HINT;
 
@@ -3975,7 +3968,7 @@ static int vh264_stop(int mode)
 
 	if (stat & STAT_VF_HOOK) {
 		if (mode == MODE_FULL) {
-			if (fr_hint_status == VDEC_HINTED)
+			if (fr_hint_status == VDEC_HINTED && !is_reset)
 				vf_notify_receiver(PROVIDER_NAME,
 					VFRAME_EVENT_PROVIDER_FR_END_HINT,
 					NULL);
@@ -4121,7 +4114,6 @@ static void stream_switching_do(struct work_struct *work)
 		if (kfifo_get(&delay_display_q, &vf)) {
 			kfifo_put(&display_q,
 				(const struct vframe_s *)vf);
-			ATRACE_COUNTER(MODULE_NAME, vf->pts);
 			vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 		} else
@@ -4203,7 +4195,7 @@ static void stream_switching_do(struct work_struct *work)
 		/* send clone to receiver */
 		kfifo_put(&display_q,
 			(const struct vframe_s *)&fense_vf[i]);
-		ATRACE_COUNTER(MODULE_NAME, fense_vf[i].pts);
+
 		/* early recycle frames for last session */
 		if (delay)
 			vh264_vf_put(vf, NULL);
@@ -4307,9 +4299,10 @@ static int amvdec_h264_remove(struct platform_device *pdev)
 	cancel_work_sync(&userdata_push_work);
 	cancel_work_sync(&qos_work);
 
-
+	mutex_lock(&vh264_mutex);
 	vh264_stop(MODE_FULL);
 	wait_vh264_search_done();
+	mutex_lock(&vh264_mutex);
 	vdec_source_changed(VFORMAT_H264, 0, 0, 0);
 #ifdef DUMP_USER_DATA
 	vh264_dump_userdata();
