@@ -6316,7 +6316,7 @@ static int vh265_vf_states(struct vframe_states *states, void *op_arg)
 
 static struct vframe_s *vh265_vf_peek(void *op_arg)
 {
-	struct vframe_s *vf[2] = {0, 0};
+	struct vframe_s *vf;
 #ifdef MULTI_INSTANCE_SUPPORT
 	struct vdec_s *vdec = op_arg;
 	struct hevc_state_s *hevc = (struct hevc_state_s *)vdec->private;
@@ -6334,15 +6334,8 @@ static struct vframe_s *vh265_vf_peek(void *op_arg)
 	}
 
 
-	if (kfifo_out_peek(&hevc->display_q, (void *)&vf, 2)) {
-		if (vf[1]) {
-			vf[0]->next_vf_pts_valid = true;
-			vf[0]->next_vf_pts = vf[1]->pts;
-		} else
-			vf[0]->next_vf_pts_valid = false;
-		return vf[0];
-	}
-
+	if (kfifo_peek(&hevc->display_q, &vf))
+		return vf;
 	return NULL;
 }
 
@@ -6435,7 +6428,6 @@ static struct vframe_s *vh265_vf_get(void *op_arg)
 #endif
 
 	if (kfifo_get(&hevc->display_q, &vf)) {
-		struct vframe_s *next_vf;
 		if (get_dbg_flag(hevc) & H265_DEBUG_PIC_STRUCT)
 			hevc_print(hevc, 0,
 				"%s(type %d index 0x%x poc %d/%d) pts(%d,%d) dur %d\n",
@@ -6447,12 +6439,6 @@ static struct vframe_s *vh265_vf_get(void *op_arg)
 
 		hevc->show_frame_num++;
 		hevc->vf_get_count++;
-
-		if (kfifo_peek(&hevc->display_q, &next_vf)) {
-			vf->next_vf_pts_valid = true;
-			vf->next_vf_pts = next_vf->pts;
-		} else
-			vf->next_vf_pts_valid = false;
 
 		return vf;
 	}

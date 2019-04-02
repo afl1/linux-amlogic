@@ -2909,7 +2909,7 @@ static int vh264_vf_states(struct vframe_states *states, void *op_arg)
 
 static struct vframe_s *vh264_vf_peek(void *op_arg)
 {
-	struct vframe_s *vf[2] = {0, 0};
+	struct vframe_s *vf;
 	struct vdec_s *vdec = op_arg;
 	struct vdec_h264_hw_s *hw = (struct vdec_h264_hw_s *)vdec->private;
 
@@ -2922,14 +2922,8 @@ static struct vframe_s *vh264_vf_peek(void *op_arg)
 		return &hw->vframe_dummy;
 	}
 
-	if (kfifo_out_peek(&hw->display_q, (void *)&vf, 2)) {
-		if (vf[1]) {
-			vf[0]->next_vf_pts_valid = true;
-			vf[0]->next_vf_pts = vf[1]->pts;
-		} else
-			vf[0]->next_vf_pts_valid = false;
-		return vf[0];
-	}
+	if (kfifo_peek(&hw->display_q, &vf))
+		return vf;
 
 	return NULL;
 }
@@ -3027,7 +3021,6 @@ static struct vframe_s *vh264_vf_get(void *op_arg)
 		int time = jiffies;
 		unsigned int frame_interval =
 			1000*(time - hw->last_frame_time)/HZ;
-		struct vframe_s *next_vf;
 		if (dpb_is_debug(DECODE_ID(hw),
 			PRINT_FLAG_VDEC_DETAIL)) {
 			struct h264_dpb_stru *p_H264_Dpb = &hw->dpb;
@@ -3053,11 +3046,6 @@ static struct vframe_s *vh264_vf_get(void *op_arg)
 		}
 		hw->last_frame_time = time;
 		hw->vf_get_count++;
-		if (kfifo_peek(&hw->display_q, &next_vf)) {
-			vf->next_vf_pts_valid = true;
-			vf->next_vf_pts = next_vf->pts;
-		} else
-			vf->next_vf_pts_valid = false;
 		return vf;
 	}
 
