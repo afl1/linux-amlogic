@@ -265,7 +265,8 @@ static int resample_get_enum(
 	return 0;
 }
 
-int resample_set(enum resample_idx id, enum samplerate_index index)
+/* force set to new rate index whatever the resampler holds */
+int resample_set(enum resample_idx id, enum samplerate_index index, bool force)
 {
 	int resample_rate = 0;
 	struct audioresample *p_resample = get_audioresample(id);
@@ -274,17 +275,21 @@ int resample_set(enum resample_idx id, enum samplerate_index index)
 	if (!p_resample)
 		return 0;
 
+	if (index < RATE_OFF || index > RATE_192K) {
+		pr_err("%s(), invalid index %d\n", __func__, index);
+		return 0;
+	}
+
+	if (index == p_resample->asrc_rate_idx && !force)
+		return 0;
+
 	pr_info("%s resample_%c to %s, last %s\n",
 		__func__,
 		(id == RESAMPLE_A) ? 'a' : 'b',
 		auge_resample_texts[index],
 		auge_resample_texts[p_resample->asrc_rate_idx]);
 
-#if 0
-	if (index == p_resample->asrc_rate_idx)
-		return 0;
-#endif
-	p_resample->asrc_rate_idx = index;
+	set_resample_rate_index(id, index);
 
 	resample_rate = resample_idx2rate(index);
 	ret = audio_resample_set(p_resample, (bool)index, resample_rate);
@@ -308,7 +313,7 @@ int resample_set_inner_rate(enum resample_idx id)
 
 	pr_debug("%s() index %d\n", __func__, id);
 
-	return resample_set(id, index);
+	return resample_set(id, index, true);
 }
 
 static int resample_set_enum(
