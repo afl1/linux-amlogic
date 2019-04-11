@@ -65,7 +65,7 @@ static struct early_suspend aocec_suspend_handler;
 
 
 #define CEC_FRAME_DELAY		msecs_to_jiffies(400)
-#define CEC_DEV_NAME		"aocec"
+#define CEC_DEV_NAME		"cec"
 
 #define CEC_POWER_ON		(0 << 0)
 #define CEC_EARLY_SUSPEND	(1 << 0)
@@ -161,7 +161,7 @@ static struct hrtimer start_bit_check;
 static unsigned char rx_msg[MAX_MSG];
 static unsigned char rx_len;
 static unsigned int  new_msg;
-static bool wake_ok = 1;
+/*static bool wake_ok = 1;*/
 static bool ee_cec;
 static bool pin_status;
 static unsigned int cec_msg_dbg_en;
@@ -519,6 +519,8 @@ void cecb_irq_handle(void)
 	/* clear irq */
 	if (intr_cec != 0)
 		cecrx_clear_irq(intr_cec);
+	else
+		CEC_INFO_L(L_1, "err cec intsts:0\n");
 
 	if (cec_dev->plat_data->ee_to_ao)
 		shift = 16;
@@ -1940,12 +1942,13 @@ static void cec_rx_process(void)
 	opcode = msg[1];
 	switch (opcode) {
 	case CEC_OC_ACTIVE_SOURCE:
-		if (wake_ok == 0) {
+		/*if (wake_ok == 0) */
+		{
 			int phy_addr = msg[2] << 8 | msg[3];
 
 			if (phy_addr == 0xffff)
 				break;
-			wake_ok = 1;
+			/*wake_ok = 1;*/
 			phy_addr |= (initiator << 16);
 			writel(phy_addr, cec_dev->cec_reg + AO_RTI_STATUS_REG1);
 			CEC_INFO("found wake up source:%x", phy_addr);
@@ -2035,9 +2038,8 @@ static void cec_rx_process(void)
 		break;
 
 	default:
-		CEC_ERR("unsupported command:%x\n", opcode);
-		CEC_ERR("wake_ok=%d,hal_flag=0x%x\n",
-			wake_ok, cec_dev->hal_flag);
+		CEC_ERR("cec unsupported cmd:0x%x, halflg:0x%x\n",
+			opcode, cec_dev->hal_flag);
 		break;
 	}
 	new_msg = 0;
@@ -2046,8 +2048,9 @@ static void cec_rx_process(void)
 static bool cec_service_suspended(void)
 {
 	/* service is not enabled */
-	if (!(cec_dev->hal_flag & (1 << HDMI_OPTION_SERVICE_FLAG)))
-		return false;
+	/*if (!(cec_dev->hal_flag & (1 << HDMI_OPTION_SERVICE_FLAG)))*/
+	/*	return false;*/
+
 	if (!(cec_dev->hal_flag & (1 << HDMI_OPTION_SYSTEM_CEC_CONTROL)))
 		return true;
 	return false;
@@ -2061,8 +2064,7 @@ static void cec_task(struct work_struct *work)
 	cec_cfg = cec_config(0, 0);
 	if (cec_cfg & CEC_FUNC_CFG_CEC_ON) {
 		/*cec module on*/
-		if (cec_dev && (!wake_ok || cec_service_suspended())
-			&& !(cec_dev->hal_flag & (1 << HDMI_OPTION_SYSTEM_CEC_CONTROL)))
+		if (cec_dev && (/*!wake_ok || */cec_service_suspended()))
 			cec_rx_process();
 
 		/*for check rx buffer for old chip version, cec rx irq process*/
@@ -2625,13 +2627,12 @@ static ssize_t hdmitx_cec_write(struct file *f, const char __user *buf,
 	if (cec_cfg & CEC_FUNC_CFG_CEC_ON) {
 		/*cec module on*/
 		ret = cec_ll_tx(tempbuf, size);
-		if (ret == CEC_FAIL_NACK) {
-			return -1;
-		} else {
-			return size;
-		}
+	}
+
+	if (ret == CEC_FAIL_NACK) {
+		return -1;
 	} else {
-		CEC_ERR("err:cec module disabled\n");
+		return size;
 	}
 
 	return ret;
@@ -3014,7 +3015,9 @@ static char *aml_cec_class_devnode(struct device *dev, umode_t *mode)
 {
 	if (mode) {
 		*mode = 0666;
-	}
+		CEC_INFO("mode is %x\n", *mode);
+	} else
+		CEC_INFO("mode is null\n");
 	return NULL;
 }
 
