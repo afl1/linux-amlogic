@@ -29,6 +29,7 @@ enum scpi_client_id {
 	SCPI_CL_LED_TIMER,
 	SCPI_CL_WOL,
 	SCPI_CL_IRPROTO,
+	SCPI_CL_REMOTE_MASK,
 	SCPI_MAX,
 };
 

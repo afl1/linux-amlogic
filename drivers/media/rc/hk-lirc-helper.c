@@ -37,6 +37,7 @@
 #define DRIVER_NAME	"hk-lirc-helper"
 
 static u32 remotewakeup = 0xffffffff;
+static u32 remotewakeupmask = 0xffffffff;
 static int decode_type = IR_DECODE_NEC;
 void __iomem *ir_reg;
 
@@ -65,6 +66,8 @@ static int remote_handle_usrkey(void)
 				sizeof(remotewakeup));
 	scpi_send_usr_data(SCPI_CL_IRPROTO, &decode_type,
 				sizeof(decode_type));
+	scpi_send_usr_data(SCPI_CL_REMOTE_MASK, &remotewakeupmask,
+				sizeof(remotewakeupmask));
 	return 0;
 }
 
@@ -91,6 +94,25 @@ static void remote_nec_convert_key(void)
 	}
 	remotewakeup |= (code_inverse << 16);
 }
+
+static int __init remote_wakeupmask_setup(char *str)
+{
+	int ret;
+
+	if (str == NULL) {
+		pr_info("%s no string\n", __func__);
+		return -EINVAL;
+	}
+
+	ret = kstrtouint(str, 16, &remotewakeupmask);
+	if (ret) {
+		remotewakeupmask = 0xffffffff;
+		return -EINVAL;
+	}
+
+	return 0;
+}
+__setup("remotewakeupmask=", remote_wakeupmask_setup);
 
 static int __init remote_irdecode_type(char *str)
 {
@@ -165,8 +187,8 @@ static int hk_lirc_helper_probe(struct platform_device *pdev)
 
 	remote_handle_usrkey();
 
-	pr_info("lirc_helper: wakeupkey 0x%x, protocol 0x%x\n",
-		remotewakeup, decode_type);
+	pr_info("lirc_helper: wakeupkey 0x%x, protocol 0x%x, mask 0x%x\n",
+		remotewakeup, decode_type, remotewakeupmask);
 
 	return 0;
 }
@@ -196,6 +218,8 @@ module_param(remotewakeup,uint,0660);
 MODULE_PARM_DESC(remotewakeup, "remotewakeup is the ir keycode to wakeup from suspend/poweroff");
 module_param(decode_type,int,0660);
 MODULE_PARM_DESC(decode_type, "decode_type is the ir decoding type. Default is 3 (NEC)");
+module_param(remotewakeupmask,uint,0660);
+MODULE_PARM_DESC(remotewakeupmask, "remotewakeupmask is the ir keycode mask for remotewakeup");
 
 MODULE_DESCRIPTION("Hardkernel LIRC helper driver");
 MODULE_AUTHOR("Joy Cho <joy.cho@hardkernel.com>");
