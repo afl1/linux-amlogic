@@ -21,6 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
@@ -202,8 +203,8 @@ static int hk_lirc_helper_probe(struct platform_device *pdev)
 		pr_err("%s register_reboot_notifier failed\n", __func__);
 
 	/* check user remote wakeup key */
-	if (decode_type == IR_DECODE_NEC)
-		remote_nec_convert_key();
+	//if (decode_type == IR_DECODE_NEC)
+	//	remote_nec_convert_key();
 	remote_handle_usrkey();
 
 	pr_info("lirc_helper: wakeupkey 0x%x, protocol 0x%x\n",
@@ -232,6 +233,11 @@ static struct platform_driver hk_lirc_helper_driver = {
 };
 
 module_platform_driver(hk_lirc_helper_driver);
+
+module_param(remotewakeup,int,0660);
+MODULE_PARM_DESC(remotewakeup, "remotewakeup is the ir keycode to wakeup from suspend/poweroff");
+module_param(decode_type,int,0660);
+MODULE_PARM_DESC(decode_type, "decode_type is the ir decoding type. Default is 3 (NEC)");
 
 MODULE_DESCRIPTION("Hardkernel LIRC helper driver");
 MODULE_AUTHOR("Joy Cho <joy.cho@hardkernel.com>");
