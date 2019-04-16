@@ -234,7 +234,7 @@ static struct platform_driver hk_lirc_helper_driver = {
 
 module_platform_driver(hk_lirc_helper_driver);
 
-module_param(remotewakeup,int,0660);
+module_param(remotewakeup,uint,0660);
 MODULE_PARM_DESC(remotewakeup, "remotewakeup is the ir keycode to wakeup from suspend/poweroff");
 module_param(decode_type,int,0660);
 MODULE_PARM_DESC(decode_type, "decode_type is the ir decoding type. Default is 3 (NEC)");
