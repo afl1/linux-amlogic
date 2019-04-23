@@ -129,7 +129,7 @@ static di_dev_t *de_devp;
 static dev_t di_devno;
 static struct class *di_clsp;
 
-static const char version_s[] = "2019-0422b:vscale_skip v is odd";
+static const char version_s[] = "2019-0423a:src chg, post ready size is wrong";
 
 static int bypass_state = 1;
 static int bypass_all;
@@ -3700,7 +3700,7 @@ jiffies_to_msecs(jiffies_64 - vframe->ready_jiffies64));
 				vframe->type |= VIDTYPE_INTERLACE_TOP;
 			}
 		}
-		di_pre_stru.width_bk = vframe->width;
+		/*di_pre_stru.width_bk = vframe->width;*/
 		if (force_width)
 			vframe->width = force_width;
 		if (force_height)
@@ -3734,7 +3734,7 @@ jiffies_to_msecs(jiffies_64 - vframe->ready_jiffies64));
 		}
 #endif
 		memcpy(di_buf->vframe, vframe, sizeof(vframe_t));
-
+		di_buf->width_bk = vframe->width;
 		di_buf->vframe->private_data = di_buf;
 		vframe_in[di_buf->index] = vframe;
 		di_buf->seq = di_pre_stru.in_seq;
@@ -4121,10 +4121,12 @@ jiffies_to_msecs(jiffies_64 - vframe->ready_jiffies64));
 	/* set vframe bit info */
 	di_buf->vframe->bitdepth &= ~(BITDEPTH_YMASK);
 	di_buf->vframe->bitdepth &= ~(FULL_PACK_422_MODE);
+	di_buf->width_bk = di_buf->vframe->width;
 	if (de_devp->pps_enable && pps_position) {
 		if (pps_dstw != di_buf->vframe->width) {
 			di_buf->vframe->width = pps_dstw;
-			di_pre_stru.width_bk = pps_dstw;
+			/*di_pre_stru.width_bk = pps_dstw;*/
+			di_buf->width_bk = pps_dstw;
 		}
 		if (pps_dsth != di_buf->vframe->height)
 			di_buf->vframe->height = pps_dsth;
@@ -4133,10 +4135,10 @@ jiffies_to_msecs(jiffies_64 - vframe->ready_jiffies64));
 			pr_info("di: hscd %d to %d\n", di_buf->vframe->width,
 				pre_hsc_down_width);
 			di_buf->vframe->width = pre_hsc_down_width;
-			di_pre_stru.width_bk = pre_hsc_down_width;
+			/*di_pre_stru.width_bk = pre_hsc_down_width;*/
+			di_buf->width_bk = pre_hsc_down_width;
 		}
 	}
-
 	if (di_force_bit_mode == 10) {
 		di_buf->vframe->bitdepth |= (BITDEPTH_Y10);
 		if (full_422_pack)
@@ -5696,7 +5698,8 @@ static int process_post_vframe(void)
 					VIDTYPE_VIU_SINGLE_PLANE |
 					VIDTYPE_VIU_FIELD |
 					VIDTYPE_PRE_INTERLACE;
-				di_buf->vframe->width = di_pre_stru.width_bk;
+				di_buf->vframe->width =
+					di_buf->di_buf_dup_p[1]->width_bk;
 				if (
 					di_buf->di_buf_dup_p[1]->
 					new_format_flag) {
@@ -5842,7 +5845,7 @@ VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 				memcpy(di_buf->vframe,
 					di_buf_i->vframe,
 					sizeof(vframe_t));
-				di_buf->vframe->width = di_pre_stru.width_bk;
+				di_buf->vframe->width = di_buf_i->width_bk;
 				di_buf->vframe->private_data = di_buf;
 
 				if (ready_di_buf->new_format_flag &&
@@ -6017,7 +6020,8 @@ VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 					VIDTYPE_VIU_FIELD |
 					VIDTYPE_PRE_INTERLACE;
 				di_buf->vframe->height >>= 1;
-				di_buf->vframe->width = di_pre_stru.width_bk;
+				di_buf->vframe->width =
+					di_buf->di_buf_dup_p[0]->width_bk;
 				if (
 					(di_buf->di_buf_dup_p[0]->
 					 new_format_flag) ||
@@ -7794,6 +7798,7 @@ static void di_get_vpu_clkb(struct device *dev, struct di_dev_s *pdev)
 	int ret = 0;
 	unsigned int tmp_clk[2] = {0, 0};
 	struct clk *vpu_clk = NULL;
+	struct clk *clkb_tmp_comp = NULL;
 
 	vpu_clk = clk_get(dev, "vpu_mux");
 	if (IS_ERR(vpu_clk))
@@ -7814,9 +7819,22 @@ static void di_get_vpu_clkb(struct device *dev, struct di_dev_s *pdev)
 		pdev->clkb_max_rate);
 	#ifdef CLK_TREE_SUPPORT
 	pdev->vpu_clkb = clk_get(dev, "vpu_clkb_composite");
+	if (is_meson_tl1_cpu()) {
+		clkb_tmp_comp = clk_get(dev, "vpu_clkb_tmp_composite");
+		if (IS_ERR(clkb_tmp_comp))
+			pr_err("clkb_tmp_comp error\n");
+		else {
+			if (!IS_ERR(vpu_clk))
+				clk_set_parent(clkb_tmp_comp, vpu_clk);
+		}
+	}
+
 	if (IS_ERR(pdev->vpu_clkb))
 		pr_err("%s: get vpu clkb gate error.\n", __func__);
-	clk_set_rate(pdev->vpu_clkb, pdev->clkb_min_rate);
+	else {
+		clk_set_rate(pdev->vpu_clkb, pdev->clkb_min_rate);
+		pr_info("get clkb rate:%ld\n", clk_get_rate(pdev->vpu_clkb));
+	}
 	#endif
 }
 
@@ -8331,8 +8349,8 @@ module_param_named(overturn, overturn, bool, 0664);
 module_param_named(queue_print_flag, queue_print_flag, int, 0664);
 module_param_named(full_422_pack, full_422_pack, bool, 0644);
 module_param_named(cma_print, cma_print, bool, 0644);
-module_param_named(pulldown_enable, pulldown_enable, bool, 0644);
 #ifdef DEBUG_SUPPORT
+module_param_named(pulldown_enable, pulldown_enable, bool, 0644);
 #ifdef RUN_DI_PROCESS_IN_IRQ
 module_param_named(input2pre, input2pre, uint, 0664);
 module_param_named(input2pre_buf_miss_count, input2pre_buf_miss_count,
