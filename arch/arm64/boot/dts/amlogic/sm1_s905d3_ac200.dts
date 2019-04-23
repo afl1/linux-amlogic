@@ -344,6 +344,30 @@
 		};
 	};
 
+	aml_cams {
+		compatible = "amlogic, cams_prober";
+		status = "disabled";
+		pinctrl-names="default";
+		pinctrl-0=<&cam_dvp_pins &gen_clk_ee_z>;
+		clocks = <&clkc CLKID_GEN_CLK>;
+		clock-names = "g12a_24m";
+		cam_0{
+			cam_name = "gc2145";
+			front_back = <0>;
+			/*u200 i2c2 gpio conflict with ethmac*/
+			camera-i2c-bus = <&i2c2>;
+			gpio_pwdn-gpios = <&gpio GPIOZ_2 GPIO_ACTIVE_HIGH>;
+			gpio_rst-gpios = <&gpio GPIOZ_12 GPIO_ACTIVE_HIGH>;
+			mirror_flip = <1>;
+			vertical_flip = <1>;
+			spread_spectrum = <0>;
+			bt_path = "gpio";
+			bt_path_count = <1>;
+			vdin_path = <0>;
+			status = "okay";
+		};
+	};
+
 	gpio_keypad{
 		compatible = "amlogic, gpio_keypad";
 		status = "okay";
@@ -1485,8 +1509,7 @@
 			 "MMC_CAP_HW_RESET",
 			 "MMC_CAP_ERASE",
 			 "MMC_CAP_CMD23";
-		caps2 = "MMC_CAP2_HS200";
-			 /*MMC_CAP2_HS400"*/
+		caps2 = "MMC_CAP2_HS200", "MMC_CAP2_HS400";
 		f_min = <400000>;
 		f_max = <200000000>;
 	};
