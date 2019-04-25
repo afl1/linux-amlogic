@@ -96,6 +96,24 @@ static int ir_irmp_decode(struct rc_dev *dev, struct ir_raw_event ev)
 
 			// transfer decoded command/address
 			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
+
+			switch (irmp_data.protocol) {
+				case IRMP_RC5_PROTOCOL:
+					scancode = 0x37FF;
+					break;
+				case IRMP_RC6_PROTOCOL:
+					scancode = 0x1EFFFF;
+					break;
+				case IRMP_RC6A_PROTOCOL:
+					scancode = 0xFFFF7FFF;
+					break;
+				default:
+					scancode = 0xFFFFFFFF;
+					break;
+			}
+
+			// transfer decoding mask
+			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
 		}
 	}
 
