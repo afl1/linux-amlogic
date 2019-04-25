@@ -30,7 +30,6 @@
 #include <linux/amlogic/iomap.h>
 #include <linux/amlogic/scpi_protocol.h>
 
-#include <linux/notifier.h>
 #include <linux/reboot.h>
 
 #include "hk-lirc-helper.h"
@@ -64,6 +63,8 @@ static int remote_handle_usrkey(void)
 {
 	scpi_send_usr_data(SCPI_CL_REMOTE, &remotewakeup,
 				sizeof(remotewakeup));
+	scpi_send_usr_data(SCPI_CL_IRPROTO, &decode_type,
+				sizeof(decode_type));
 	return 0;
 }
 
@@ -89,29 +90,6 @@ static void remote_nec_convert_key(void)
 		code_inverse |= ((code & BIT_MASK(15 - i)) >> shift);
 	}
 	remotewakeup |= (code_inverse << 16);
-}
-
-static int remote_handle_protocol(void)
-{
-	const struct remote_reg_proto **reg_proto = remote_reg_proto_hk;
-	struct remote_reg_map *reg_map;
-	unsigned int size;
-
-	while ((*reg_proto) != NULL) {
-		if (((*reg_proto)->decode_type) == decode_type)
-			break;
-		reg_proto++;
-	}
-
-	reg_map = (*reg_proto)->reg_map;
-	size = (*reg_proto)->reg_map_size;
-	while (size) {
-		writel(reg_map->val, (ir_reg + reg_map->reg));
-		reg_map++;
-		size--;
-	}
-
-	return 0;
 }
 
 static int __init remote_irdecode_type(char *str)
@@ -166,19 +144,6 @@ static int __init remote_wakeup_setup(char *str)
 }
 __setup("remotewakeup=", remote_wakeup_setup);
 
-static int hk_lirc_helper_notifier_sys(struct notifier_block *this,
-			unsigned long code, void *unused)
-{
-	if (code == SYS_POWER_OFF)
-		remote_handle_protocol();
-
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block hk_lirc_helper_notifier = {
-	.notifier_call = hk_lirc_helper_notifier_sys,
-};
-
 static int hk_lirc_helper_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -198,13 +163,6 @@ static int hk_lirc_helper_probe(struct platform_device *pdev)
 		ir_reg = NULL;
 	}
 
-	ret = register_reboot_notifier(&hk_lirc_helper_notifier);
-	if (ret)
-		pr_err("%s register_reboot_notifier failed\n", __func__);
-
-	/* check user remote wakeup key */
-	//if (decode_type == IR_DECODE_NEC)
-	//	remote_nec_convert_key();
 	remote_handle_usrkey();
 
 	pr_info("lirc_helper: wakeupkey 0x%x, protocol 0x%x\n",
