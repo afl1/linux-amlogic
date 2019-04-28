@@ -3076,7 +3076,7 @@ struct hdmi_audio_fs_ncts aud_48k_para = {
 	},
 	.array[6] = {
 		.tmds_clk = 74176,
-		.n = 6144,
+		.n = 11648,
 		.cts = 140625,
 		.n_36bit = 11648,
 		.cts_36bit = 210937,
@@ -3112,7 +3112,7 @@ struct hdmi_audio_fs_ncts aud_48k_para = {
 	},
 	.array[10] = {
 		.tmds_clk = 296703,
-		.n = 5120,
+		.n = 5824,
 		.cts = 281250,
 	},
 	.array[11] = {
