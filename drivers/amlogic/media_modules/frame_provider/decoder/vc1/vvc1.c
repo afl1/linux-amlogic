@@ -14,6 +14,7 @@
  * more details.
  *
  */
+#define DEBUG
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/errno.h>
@@ -41,6 +42,9 @@
 #include <linux/amlogic/media/codec_mm/configs.h>
 #include "../utils/firmware.h"
 #include <linux/amlogic/tee.h>
+#include <linux/delay.h>
+#include <trace/events/meson_atrace.h>
+
 
 #define DRIVER_NAME "amvdec_vc1"
 #define MODULE_NAME "amvdec_vc1"
@@ -49,6 +53,8 @@
 #if 1	/* //MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6 */
 #define NV21
 #endif
+
+#define VC1_MAX_SUPPORT_SIZE (1920*1088)
 
 #define I_PICTURE   0
 #define P_PICTURE   1
@@ -124,7 +130,6 @@ static u32 stat;
 static u32 buf_size = 32 * 1024 * 1024;
 static u32 buf_offset;
 static u32 avi_flag;
-static u32 keyframe_pts_only;
 static u32 vvc1_ratio;
 static u32 vvc1_format;
 
@@ -135,10 +140,9 @@ static u32 pts_by_offset = 1;
 static u32 total_frame;
 static u32 next_pts;
 static u64 next_pts_us64;
-static u32 next_IP_pts;
-static u64 next_IP_pts_us64;
 static bool is_reset;
 static struct work_struct set_clk_work;
+static struct work_struct error_wd_work;
 
 #ifdef DEBUG_PTS
 static u32 pts_hit, pts_missed, pts_i_hit, pts_i_missed;
@@ -275,9 +279,10 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 	u32 repeat_count;
 	u32 picture_type;
 	u32 buffer_index;
-	unsigned int pts, pts_valid = 0, offset;
-	u32 v_width, v_height, dur;
+	unsigned int pts, pts_valid = 0, offset = 0;
+	u32 v_width, v_height;
 	u64 pts_us64 = 0;
+	u32 frame_size;
 
 	reg = READ_VREG(VC1_BUFFEROUT);
 
@@ -299,32 +304,14 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 			vvc1_amstream_dec_info.height = v_height;
 			frame_height = v_height;
 		}
-		repeat_count = READ_VREG(VC1_REPEAT_COUNT);
-		buffer_index = reg & 0x7;
-		picture_type = (reg >> 3) & 7;
 
 		if (pts_by_offset) {
 			offset = READ_VREG(VC1_OFFSET_REG);
-			if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, offset, &pts, 0, &pts_us64) == 0) {
+			if (pts_lookup_offset_us64(
+					PTS_TYPE_VIDEO,
+					offset, &pts, &frame_size,
+					0, &pts_us64) == 0) {
 				pts_valid = 1;
-				if (keyframe_pts_only) {
-					//pr_info("PT:%d rpc:%d pts64:%lld\n", picture_type , repeat_count, pts_us64);
-					dur = DUR2PTS(vvc1_amstream_dec_info.rate);
-					if (picture_type == B_PICTURE)
-					{
-						next_IP_pts = pts;
-						next_IP_pts_us64 = pts_us64;
-						pts -= dur;
-						pts_us64 -= (dur * 100) / 9;
-					}
-					else if (next_IP_pts)
-					{
-						pts = next_IP_pts;
-						next_IP_pts = 0;
-						pts_us64 = next_IP_pts_us64;
-						next_IP_pts_us64 = 0;
-					}
-				}
 #ifdef DEBUG_PTS
 				pts_hit++;
 #endif
@@ -376,10 +363,10 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 					frm.end_pts = pts;
 					frm.rate = (frm.end_pts -
 						frm.start_pts) / frm.num;
-					//pr_info("frate before=%d,%d,num=%d\n",
-					//frm.rate,
-					//DUR2PTS(vvc1_amstream_dec_info.rate),
-					//frm.num);
+					pr_info("frate before=%d,%d,num=%d\n",
+					frm.rate,
+					DUR2PTS(vvc1_amstream_dec_info.rate),
+					frm.num);
 					/* check if measured rate is same as
 					 * settings from upper layer
 					 * and correct it if necessary
@@ -400,10 +387,10 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 						vvc1_amstream_dec_info.rate),
 						RATE_30_FPS,
 						RATE_CORRECTION_THRESHOLD))) {
-						//pr_info(
-						//"vvc1: frate from %d to %d\n",
-						//vvc1_amstream_dec_info.rate,
-						//PTS2DUR(frm.rate));
+						pr_info(
+						"vvc1: frate from %d to %d\n",
+						vvc1_amstream_dec_info.rate,
+						PTS2DUR(frm.rate));
 
 						vvc1_amstream_dec_info.rate =
 							PTS2DUR(frm.rate);
@@ -511,6 +498,7 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 					buffer_index);
 
 			kfifo_put(&display_q, (const struct vframe_s *)vf);
+			ATRACE_COUNTER(MODULE_NAME, vf->pts);
 
 			vf_notify_receiver(
 				PROVIDER_NAME,
@@ -570,6 +558,7 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 					buffer_index);
 
 			kfifo_put(&display_q, (const struct vframe_s *)vf);
+			ATRACE_COUNTER(MODULE_NAME, vf->pts);
 
 			vf_notify_receiver(
 					PROVIDER_NAME,
@@ -654,6 +643,7 @@ static irqreturn_t vvc1_isr(int irq, void *dev_id)
 					mm_blk_handle,
 					buffer_index);
 			kfifo_put(&display_q, (const struct vframe_s *)vf);
+			ATRACE_COUNTER(MODULE_NAME, vf->pts);
 
 			vf_notify_receiver(PROVIDER_NAME,
 					VFRAME_EVENT_PROVIDER_VFRAME_READY,
@@ -742,6 +732,9 @@ static int vvc1_event_cb(int type, void *data, void *private_data)
 
 int vvc1_dec_status(struct vdec_s *vdec, struct vdec_info *vstatus)
 {
+	if (!(stat & STAT_VDEC_RUN))
+		return -1;
+
 	vstatus->frame_width = vvc1_amstream_dec_info.width;
 	vstatus->frame_height = vvc1_amstream_dec_info.height;
 	if (vvc1_amstream_dec_info.rate != 0)
@@ -934,16 +927,13 @@ static void vvc1_local_init(void)
 	/* vvc1_ratio = vvc1_amstream_dec_info.ratio; */
 	vvc1_ratio = 0x100;
 
-	avi_flag = (unsigned long) vvc1_amstream_dec_info.param & 0x1;
-	keyframe_pts_only = (u32)vvc1_amstream_dec_info.param & 0x100;
+	avi_flag = (unsigned long) vvc1_amstream_dec_info.param;
 
 	total_frame = 0;
 
 	next_pts = 0;
 
 	next_pts_us64 = 0;
-	next_IP_pts = 0;
-	next_IP_pts_us64 = 0;
 	saved_resolution = 0;
 	frame_width = frame_height = frame_dur = 0;
 #ifdef DEBUG_PTS
@@ -1002,23 +992,18 @@ static void vvc1_ppmgr_reset(void)
 
 static void vvc1_set_clk(struct work_struct *work)
 {
-	if (frame_dur > 0 && saved_resolution !=
-		frame_width * frame_height * (96000 / frame_dur)) {
 		int fps = 96000 / frame_dur;
 
 		saved_resolution = frame_width * frame_height * fps;
 		vdec_source_changed(VFORMAT_VC1,
 			frame_width, frame_height, fps);
-	}
+
 }
 
-static void vvc1_put_timer_func(unsigned long arg)
+static void error_do_work(struct work_struct *work)
 {
-	struct timer_list *timer = (struct timer_list *)arg;
-
-#if 1
-	if (READ_VREG(VC1_SOS_COUNT) > 10) {
 		amvdec_stop();
+		msleep(20);
 #ifdef CONFIG_AMLOGIC_POST_PROCESS_MANAGER
 		vvc1_ppmgr_reset();
 #else
@@ -1028,8 +1013,15 @@ static void vvc1_put_timer_func(unsigned long arg)
 #endif
 		vvc1_prot_init();
 		amvdec_start();
-	}
-#endif
+}
+
+
+static void vvc1_put_timer_func(unsigned long arg)
+{
+	struct timer_list *timer = (struct timer_list *)arg;
+
+	if (READ_VREG(VC1_SOS_COUNT) > 10)
+		schedule_work(&error_wd_work);
 
 	while (!kfifo_is_empty(&recycle_q) && (READ_VREG(VC1_BUFFERIN) == 0)) {
 		struct vframe_s *vf;
@@ -1044,7 +1036,10 @@ static void vvc1_put_timer_func(unsigned long arg)
 			kfifo_put(&newframe_q, (const struct vframe_s *)vf);
 		}
 	}
-	schedule_work(&set_clk_work);
+
+	if (frame_dur > 0 && saved_resolution !=
+		frame_width * frame_height * (96000 / frame_dur))
+		schedule_work(&set_clk_work);
 	timer->expires = jiffies + PUT_INTERVAL;
 
 	add_timer(timer);
@@ -1052,7 +1047,7 @@ static void vvc1_put_timer_func(unsigned long arg)
 
 static s32 vvc1_init(void)
 {
-	int ret = -1, size = -1;
+	int ret = -1;
 	char *buf = vmalloc(0x1000 * 16);
 	int fw_type = VIDEO_DEC_VC1;
 
@@ -1080,19 +1075,19 @@ static s32 vvc1_init(void)
 	} else
 		pr_info("not supported VC1 format\n");
 
-	size = get_firmware_data(fw_type, buf);
-	if (size < 0) {
+	if (get_firmware_data(fw_type, buf) < 0) {
 		amvdec_disable();
 		pr_err("get firmware fail.");
 		vfree(buf);
 		return -1;
 	}
 
-	if (size == 1)
-		pr_info("tee load ok\n");
-	else if (amvdec_loadmc_ex(VFORMAT_VC1, NULL, buf) < 0) {
+	ret = amvdec_loadmc_ex(VFORMAT_VC1, NULL, buf);
+	if (ret < 0) {
 		amvdec_disable();
 		vfree(buf);
+		pr_err("VC1: the %s fw loading failed, err: %x\n",
+			tee_enabled() ? "TEE" : "local", ret);
 		return -EBUSY;
 	}
 
@@ -1158,28 +1153,40 @@ static int amvdec_vc1_probe(struct platform_device *pdev)
 		return -EFAULT;
 	}
 
-	if (pdata->sys_info)
+	if (pdata->sys_info) {
 		vvc1_amstream_dec_info = *pdata->sys_info;
 
+		if ((vvc1_amstream_dec_info.height != 0) &&
+			(vvc1_amstream_dec_info.width >
+			(VC1_MAX_SUPPORT_SIZE/vvc1_amstream_dec_info.height))) {
+			pr_info("amvdec_vc1: over size, unsupport: %d * %d\n",
+				vvc1_amstream_dec_info.width,
+				vvc1_amstream_dec_info.height);
+			return -EFAULT;
+		}
+	}
 	pdata->dec_status = vvc1_dec_status;
 	pdata->set_isreset = vvc1_set_isreset;
 	is_reset = 0;
 
 	vvc1_vdec_info_init();
 
+	INIT_WORK(&error_wd_work, error_do_work);
+	INIT_WORK(&set_clk_work, vvc1_set_clk);
 	if (vvc1_init() < 0) {
 		pr_info("amvdec_vc1 init failed.\n");
 		kfree(gvs);
 		gvs = NULL;
+		pdata->dec_status = NULL;
 		return -ENODEV;
 	}
-	INIT_WORK(&set_clk_work, vvc1_set_clk);
+
 	return 0;
 }
 
 static int amvdec_vc1_remove(struct platform_device *pdev)
 {
-	cancel_work_sync(&set_clk_work);
+	cancel_work_sync(&error_wd_work);
 	if (stat & STAT_VDEC_RUN) {
 		amvdec_stop();
 		stat &= ~STAT_VDEC_RUN;
@@ -1195,6 +1202,7 @@ static int amvdec_vc1_remove(struct platform_device *pdev)
 		stat &= ~STAT_TIMER_ARM;
 	}
 
+	cancel_work_sync(&set_clk_work);
 	if (stat & STAT_VF_HOOK) {
 		if (!is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
