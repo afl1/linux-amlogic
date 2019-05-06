@@ -1,8 +1,0 @@
-#include "g12b_a311d_odroid_n2_dvb.dts"
-
-/{
-	coreelec-dt-id = "g12b_a311d_odroid_n2_wetek";
-	dvb {
-		dev_name = "wetek-dvb";
-	};
-};
