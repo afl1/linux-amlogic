@@ -16,8 +16,8 @@
 		pinctrl-0 = <&dvb_s_ts0_pins>;
 		pinctrl-1 = <&dvb_s_ts1_pins>;
 		interrupts = <GIC_SPI 23 IRQ_TYPE_EDGE_RISING>,
-			     <GIC_SPI  5 IRQ_TYPE_EDGE_RISING>;
-			     <GIC_SPI 19 IRQ_TYPE_EDGE_RISING>;
+			     <GIC_SPI  5 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 19 IRQ_TYPE_EDGE_RISING>,
 			     <GIC_SPI 25 IRQ_TYPE_EDGE_RISING>;
 		interrupt-names = "demux0", "demux1", "asyncfifo0", "asyncfifo1";
 	};
