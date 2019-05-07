@@ -23,7 +23,7 @@
 
 / {
 	model = "Amlogic";
-	amlogic-dt-id = "g12a_u202_1g";
+	amlogic-dt-id = "g12a_u202_2g";
 	compatible = "amlogic, g12a";
 	interrupt-parent = <&gic>;
 	#address-cells = <1>;
@@ -46,7 +46,7 @@
 
 	memory@00000000 {
 		device_type = "memory";
-		linux,usable-memory = <0x000000 0x40000000>;
+		linux,usable-memory = <0x000000 0x80000000>;
 	};
 
 	reserved-memory {
@@ -80,24 +80,14 @@
 			reusable;
 			size = <0x800000>;
 			alignment = <0x400000>;
-			alloc-ranges = <0x3f800000 0x800000>;
-		};
-
-		codec_mm_cma:linux,codec_mm_cma {
-			compatible = "shared-dma-pool";
-			reusable;
-			/* ion_codec_mm max can alloc size 80M*/
-			size = <0xC400000>;
-			alignment = <0x400000>;
-			linux,contiguous-region;
-			alloc-ranges = <0x30000000 0x10000000>;
+			alloc-ranges = <0x7f800000 0x800000>;
 		};
 		ion_cma_reserved:linux,ion-dev {
 			compatible = "shared-dma-pool";
 			reusable;
 			size = <0x8000000>;
 			alignment = <0x400000>;
-			alloc-ranges = <0x0 0x30000000>;
+			alloc-ranges = <0x30000000 0x50000000>;
 		};
 		//di_reserved:linux,di {
 			//compatible = "amlogic, di-mem";
@@ -122,7 +112,6 @@
 			 */
 			size = <0x02800000>;
 			alignment = <0x400000>;
-			alloc-ranges = <0x30000000 0x10000000>;
 		};
 		/*  POST PROCESS MANAGER */
 		ppmgr_reserved:linux,ppmgr {
@@ -130,6 +119,15 @@
 			size = <0x0>;
 		};
 
+		codec_mm_cma:linux,codec_mm_cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			/* ion_codec_mm max can alloc size 80M*/
+			size = <0x13400000>;
+			alignment = <0x400000>;
+			linux,contiguous-region;
+			alloc-ranges = <0x30000000 0x50000000>;
+		};
 		/* codec shared reserved */
 		codec_mm_reserved:linux,codec_mm_reserved {
 			compatible = "amlogic, codec-mm-reserved";
@@ -144,7 +142,6 @@
 		/* 1920x1080x2x4  =16+4 M */
 			size = <0x04000000>;
 			alignment = <0x400000>;
-			alloc-ranges = <0x0 0x30000000>;
 		};
 		/*  vdin1 CMA pool */
 		vdin1_cma_reserved:linux,vdin1_cma {
@@ -153,7 +150,6 @@
 			/* 1920x1080x2x4  =16 M */
 			size = <0x04000000>;
 			alignment = <0x400000>;
-			alloc-ranges = <0x0 0x30000000>;
 		};
 		vm0_cma_reserved:linux,vm0_cma {
 			compatible = "shared-dma-pool";
@@ -687,11 +683,11 @@
 
 		aml-audio-card,dai-link@4 {
 			mclk-fs = <128>;
-			//continuous-clock;
+			continuous-clock;
 			/* suffix-name, sync with android audio hal
 			 * what's the dai link used for
 			 */
-			suffix-name = "alsaPORT-spdif";
+			suffix-name = "alsaPORT-spdifb2hdmi";
 			cpu {
 				sound-dai = <&aml_spdif>;
 				system-clock-frequency = <6144000>;
@@ -707,7 +703,7 @@
 			/* suffix-name, sync with android audio hal
 			 * what's the dai link used for
 			 */
-			suffix-name = "alsaPORT-spdifb2hdmi";
+			suffix-name = "alsaPORT-spdif";
 			cpu {
 				sound-dai = <&aml_spdif_b>;
 				system-clock-frequency = <6144000>;
@@ -812,6 +808,122 @@
 		};
 	};
 
+	cpu_opp_table1: cpu_opp_table1 {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp00 {
+			opp-hz = /bits/ 64 <100000000>;
+			opp-microvolt = <731000>;
+		};
+		opp01 {
+			opp-hz = /bits/ 64 <250000000>;
+			opp-microvolt = <731000>;
+		};
+		opp02 {
+			opp-hz = /bits/ 64 <500000000>;
+			opp-microvolt = <731000>;
+		};
+		opp03 {
+			opp-hz = /bits/ 64 <667000000>;
+			opp-microvolt = <731000>;
+		};
+		opp04 {
+			opp-hz = /bits/ 64 <1000000000>;
+			opp-microvolt = <731000>;
+		};
+		opp05 {
+			opp-hz = /bits/ 64 <1200000000>;
+			opp-microvolt = <731000>;
+		};
+		opp06 {
+			opp-hz = /bits/ 64 <1398000000>;
+			opp-microvolt = <761000>;
+		};
+		opp07 {
+			opp-hz = /bits/ 64 <1512000000>;
+			opp-microvolt = <791000>;
+		};
+		opp08 {
+			opp-hz = /bits/ 64 <1608000000>;
+			opp-microvolt = <831000>;
+		};
+		opp09 {
+			opp-hz = /bits/ 64 <1704000000>;
+			opp-microvolt = <861000>;
+		};
+		opp10 {
+			opp-hz = /bits/ 64 <1800000000>;
+			opp-microvolt = <981000>;
+		};
+		opp11 {
+			opp-hz = /bits/ 64 <1908000000>;
+			opp-microvolt = <991000>;
+		};
+	};
+
+	cpu_opp_table2: cpu_opp_table2 {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp00 {
+			opp-hz = /bits/ 64 <100000000>;
+			opp-microvolt = <731000>;
+		};
+		opp01 {
+			opp-hz = /bits/ 64 <250000000>;
+			opp-microvolt = <731000>;
+		};
+		opp02 {
+			opp-hz = /bits/ 64 <500000000>;
+			opp-microvolt = <731000>;
+		};
+		opp03 {
+			opp-hz = /bits/ 64 <667000000>;
+			opp-microvolt = <731000>;
+		};
+		opp04 {
+			opp-hz = /bits/ 64 <1000000000>;
+			opp-microvolt = <731000>;
+		};
+		opp05 {
+			opp-hz = /bits/ 64 <1200000000>;
+			opp-microvolt = <731000>;
+		};
+		opp06 {
+			opp-hz = /bits/ 64 <1398000000>;
+			opp-microvolt = <761000>;
+		};
+		opp07 {
+			opp-hz = /bits/ 64 <1512000000>;
+			opp-microvolt = <791000>;
+		};
+		opp08 {
+			opp-hz = /bits/ 64 <1608000000>;
+			opp-microvolt = <831000>;
+		};
+		opp09 {
+			opp-hz = /bits/ 64 <1704000000>;
+			opp-microvolt = <861000>;
+		};
+		opp10 {
+			opp-hz = /bits/ 64 <1800000000>;
+			opp-microvolt = <981000>;
+		};
+		opp11 {
+			opp-hz = /bits/ 64 <1908000000>;
+			opp-microvolt = <991000>;
+		};
+		opp12 {
+			opp-hz = /bits/ 64 <2016000000>;
+			opp-microvolt = <1011000>;
+		};
+		opp13 {
+			opp-hz = /bits/ 64 <2100000000>;
+			opp-microvolt = <1011000>;
+		};
+	};
+
 	cpufreq-meson {
 		compatible = "amlogic, cpufreq-meson";
 		pinctrl-names = "default";
@@ -821,11 +933,55 @@
 
 }; /* end of / */
 
+&CPU0 {
+	/*set differents table cpufreq max*/
+	diff_tables_supply;
+	hispeed_cpufreq_max = <2100>;
+	medspeed_cpufreq_max = <1908>;
+	lospeed_cpufreq_max = <1800>;
+	operating-points-v2 = <&cpu_opp_table0>,
+			<&cpu_opp_table1>,
+			<&cpu_opp_table2>;
+};
+
+&CPU1 {
+	/*set differents table cpufreq max*/
+	diff_tables_supply;
+	hispeed_cpufreq_max = <2100>;
+	medspeed_cpufreq_max = <1908>;
+	lospeed_cpufreq_max = <1800>;
+	operating-points-v2 = <&cpu_opp_table0>,
+			<&cpu_opp_table1>,
+			<&cpu_opp_table2>;
+};
+
+&CPU2 {
+	/*set differents table cpufreq max*/
+	diff_tables_supply;
+	hispeed_cpufreq_max = <2100>;
+	medspeed_cpufreq_max = <1908>;
+	lospeed_cpufreq_max = <1800>;
+	operating-points-v2 = <&cpu_opp_table0>,
+			<&cpu_opp_table1>,
+			<&cpu_opp_table2>;
+};
+
+&CPU3 {
+	/*set differents table cpufreq max*/
+	diff_tables_supply;
+	hispeed_cpufreq_max = <2100>;
+	medspeed_cpufreq_max = <1908>;
+	lospeed_cpufreq_max = <1800>;
+	operating-points-v2 = <&cpu_opp_table0>,
+			<&cpu_opp_table1>,
+			<&cpu_opp_table2>;
+};
+
 &meson_fb {
 	status = "okay";
 	display_size_default = <1920 1080 1920 2160 32>;
 	mem_size = <0x00800000 0x1980000 0x100000 0x100000 0x800000>;
-	logo_addr = "0x3f800000";
+	logo_addr = "0x7f800000";
 	mem_alloc = <0>;
 	pxp_mode = <0>; /** 0:normal mode 1:pxp mode */
 };
