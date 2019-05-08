@@ -72,7 +72,7 @@
 #include "gpio_api.h"
 #elif defined(IRMP_CHIBIOS_HAL)                                                     // ChibiOS HAL
 #  include "hal.h"
-#elif defined(IRMP_PULSE_IR_DECODER)                                                          // use measured pulses
+#elif defined(IRMP_PULSE_IR_DECODER)                                                // use measured pulses
 #else
 #  define ATMEL_AVR                                                                 // ATMEL AVR
 #endif
@@ -204,8 +204,6 @@ typedef unsigned int                    uint32_t;
 
 #if defined(PIC_C18)
 #define IRMP_PACKED_STRUCT
-#elif defined(U_BOOT)
-#define IRMP_PACKED_STRUCT              __attribute__((aligned(4)))
 #else
 #define IRMP_PACKED_STRUCT              __attribute__ ((__packed__))
 #endif
