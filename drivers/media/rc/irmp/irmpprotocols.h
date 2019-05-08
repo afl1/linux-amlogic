@@ -100,7 +100,11 @@ typedef uint16_t    PAUSE_LEN;
 #  if (F_INTERRUPTS * IRMP_TIMEOUT_TIME_MS) / 1000000 >= 254
 typedef uint16_t    PAUSE_LEN;
 #  else
+#if !defined(IRMP_PULSE_IR_DECODER)
 typedef uint8_t     PAUSE_LEN;
+#else
+typedef uint16_t    PAUSE_LEN;
+#endif
 #  endif
 #endif
 
