@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Author: afl1 <afl2001@gmail.com>
+ */
+
+#include "gxl_p230_2g.dts"
+/ {
+	coreleelec-dt-id = "gxl_p230_k1_pro";
+
+	model = "MeCool KI Pro (S905D)";
+
+	partitions: partitions{
+		parts = <11>;
+		part-0 = <&logo>;
+		part-1 = <&recovery>;
+		part-2 = <&rsv>;
+		part-3 = <&tee>;
+		part-4 = <&crypt>;
+		part-5 = <&misc>;
+		part-6 = <&instaboot>;
+		part-7 = <&boot>;
+		part-8 = <&system>;
+		part-9 = <&cache>;
+		part-10 = <&data>;
+
+		logo:logo{
+			pname = "logo";
+			size = <0x0 0x2000000>;
+			mask = <1>;
+		};
+		recovery:recovery{
+			pname = "recovery";
+			size = <0x0 0x2000000>;
+			mask = <1>;
+		};
+		rsv:rsv{
+			pname = "rsv";
+			size = <0x0 0x800000>;
+			mask = <1>;
+		};
+		tee:tee{
+			pname = "tee";
+			size = <0x0 0x800000>;
+			mask = <1>;
+		};
+		crypt:crypt{
+			pname = "crypt";
+			size = <0x0 0x2000000>;
+			mask = <1>;
+		};
+		misc:misc{
+			pname = "misc";
+			size = <0x0 0x2000000>;
+			mask = <1>;
+		};
+		instaboot:instaboot{
+			pname = "instaboot";
+			size = <0x0 0x400000>;
+			mask = <1>;
+		};
+		boot:boot
+		{
+			pname = "boot";
+			size = <0x0 0x2000000>;
+			mask = <1>;
+		};
+		system:system
+		{
+			pname = "system";
+			size = <0x0 0x80000000>;
+			mask = <1>;
+		};
+		cache:cache
+		{
+			pname = "cache";
+			size = <0x0 0x20000000>;
+			mask = <2>;
+		};
+		data:data
+		{
+			pname = "data";
+			size = <0xffffffff 0xffffffff>;
+			mask = <4>;
+		};
+	};
+
+
+	dvb {
+		compatible = "amlogic,dvb";
+		dev_name = "avl6862";
+		status = "okay";
+		dtv_demod0_i2c_adap_id = <2>;
+		fec_reset_gpio-gpios = <&gpio GPIOX_13 GPIO_ACTIVE_HIGH>;
+		power_ctrl_gpio-gpios = <&gpio GPIOX_11 GPIO_ACTIVE_LOW>;
+		interrupts = <GIC_SPI 23 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI  5 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 19 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 25 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "demux0", "demux1", "asyncfifo0", "asyncfifo1";
+	};
+
+};
+
+/*i2c-B*/
+&i2c1 {
+  status = "okay";
+};
