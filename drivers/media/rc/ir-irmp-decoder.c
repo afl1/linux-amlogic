@@ -56,6 +56,7 @@ static int ir_irmp_decode(struct rc_dev *dev, struct ir_raw_event ev)
 			switch (irmp_data.protocol) {
 				case IRMP_NEC_PROTOCOL:
 				case IRMP_SAMSUNG_PROTOCOL:
+				case IRMP_SAMSUNG32_PROTOCOL:
 					protocol = 0;
 					break;
 				case IRMP_RC5_PROTOCOL:
