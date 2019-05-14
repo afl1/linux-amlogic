@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include "rc-core-priv.h"
 #define IRMP_PULSE_IR_DECODER
+#define U_BOOT_COMPATIBLE
 #define IRMP_PROTOCOL_NAMES 1
 #ifdef unix
 #undef unix
@@ -57,27 +58,61 @@ static int ir_irmp_decode(struct rc_dev *dev, struct ir_raw_event ev)
 				case IRMP_NEC_PROTOCOL:
 				case IRMP_SAMSUNG_PROTOCOL:
 				case IRMP_SAMSUNG32_PROTOCOL:
-					protocol = 0;
+					protocol = 0x0;
 					break;
 				case IRMP_RC5_PROTOCOL:
-					protocol = 4;
+					protocol = 0x4;
 					break;
 				case IRMP_RC6_PROTOCOL:
-					protocol = 5;
+					protocol = 0xb;
+					break;
+				case IRMP_RC6A_PROTOCOL:
+					protocol = 0x5;
 					break;
 			}
 			// transfer decoded protocol
-			if (protocol != 0xFF) {
+			if (protocol != 0xFF)
 				scancode = 0xA0A0A000 | protocol;
-				rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
-			}
-			else {
+			else
 				scancode = 0xB0B0B000 | irmp_data.protocol;
-				rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
+
+			// transfer decoded ir protocol
+			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
+
+			switch (irmp_data.protocol) {
+				case IRMP_RC5_PROTOCOL:
+					scancode = 0x3000 | (((unsigned int)(irmp_data.address) & 0x7F) << 6) | (irmp_data.command & 0x3F);
+					break;
+				case IRMP_RC6_PROTOCOL:
+					scancode = (((unsigned int)(irmp_data.address) & 0x1FFF) << 8) | irmp_data.command;
+					break;
+				case IRMP_RC6A_PROTOCOL:
+					scancode = ((unsigned int)(irmp_data.address) << 16) | irmp_data.command;
+					break;
+				default:
+					scancode = ((unsigned int)(irmp_data.command) << 16) | irmp_data.address;
+					break;
 			}
 
 			// transfer decoded command/address
-			scancode = ((unsigned int)(irmp_data.command) << 16) | irmp_data.address;
+			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
+
+			switch (irmp_data.protocol) {
+				case IRMP_RC5_PROTOCOL:
+					scancode = 0x37FF;
+					break;
+				case IRMP_RC6_PROTOCOL:
+					scancode = 0x1EFFFF;
+					break;
+				case IRMP_RC6A_PROTOCOL:
+					scancode = 0xFFFF7FFF;
+					break;
+				default:
+					scancode = 0xFFFFFFFF;
+					break;
+			}
+
+			// transfer decoding mask
 			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
 		}
 	}
