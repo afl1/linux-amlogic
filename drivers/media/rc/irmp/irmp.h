@@ -272,7 +272,7 @@ extern uint_fast8_t                     irmp_get_data (IRMP_DATA *);
 #if !defined(IRMP_PULSE_IR_DECODER)
 extern uint_fast8_t                     irmp_ISR (void);
 #else
-extern uint_fast8_t                     irmp_ISR (uint_fast8_t duration);
+extern uint_fast8_t                     irmp_ISR (uint_fast16_t duration);
 #endif
 
 #if IRMP_PROTOCOL_NAMES == 1
