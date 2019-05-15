@@ -67,17 +67,24 @@ static int ir_irmp_decode(struct rc_dev *dev, struct ir_raw_event ev)
 					break;
 			}
 			// transfer decoded protocol
-			if (protocol != 0xFF) {
+			if (protocol != 0xFF)
 				scancode = 0xA0A0A000 | protocol;
-				rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
-			}
-			else {
+			else
 				scancode = 0xB0B0B000 | irmp_data.protocol;
-				rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
+
+			// transfer decoded ir protocol
+			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
+
+			switch (irmp_data.protocol) {
+				case IRMP_RC5_PROTOCOL:
+					scancode = 0x3000 | (((unsigned int)(irmp_data.address) & 0x1F) << 6) | (irmp_data.command & 0x3F);
+					break;
+				default:
+					scancode = ((unsigned int)(irmp_data.command) << 16) | irmp_data.address;
+					break;
 			}
 
 			// transfer decoded command/address
-			scancode = ((unsigned int)(irmp_data.command) << 16) | irmp_data.address;
 			rc_keydown(dev, RC_TYPE_IRMP, scancode, 0);
 		}
 	}
