@@ -2894,7 +2894,7 @@ uint_fast8_t
 irmp_ISR (void)
 #else
 uint_fast8_t
-irmp_ISR (uint_fast8_t duration)
+irmp_ISR (uint_fast16_t duration)
 #endif
 {
     static uint_fast8_t     irmp_start_bit_detected;                                // flag: start bit detected
