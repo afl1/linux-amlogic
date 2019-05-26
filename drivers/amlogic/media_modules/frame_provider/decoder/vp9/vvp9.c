@@ -8459,6 +8459,8 @@ static struct codec_profile_t amvdec_vp9_profile = {
 	.profile = ""
 };
 
+static struct codec_profile_t amvdec_vp9_profile_mult;
+
 static unsigned char get_data_check_sum
 	(struct VP9Decoder_s *pbi, int size)
 {
@@ -9662,6 +9664,9 @@ static int __init amvdec_vp9_driver_init_module(void)
 		max_buf_num = MAX_BUF_NUM_LESS;
 
 	vcodec_profile_register(&amvdec_vp9_profile);
+	amvdec_vp9_profile_mult = amvdec_vp9_profile;
+	amvdec_vp9_profile_mult.name = "mvp9";
+	vcodec_profile_register(&amvdec_vp9_profile_mult);
 	INIT_REG_NODE_CONFIGS("media.decoder", &vp9_node,
 		"vp9", vp9_configs, CONFIG_FOR_RW);
 
