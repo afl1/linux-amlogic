@@ -36,9 +36,9 @@
 #include "ddr_mngr.h"
 #include "spdif_hw.h"
 #include "spdif_match_table.c"
-#include "audio_utils.h"
 #include "resample.h"
 #include "resample_hw.h"
+#include "spdif.h"
 
 #define DRV_NAME "snd_spdif"
 
@@ -49,6 +49,7 @@
 /*#define __SPDIFIN_INSERT_CHNUM__*/
 
 /*#define __SPDIFIN_AUDIO_TYPE_HW__*/
+struct aml_spdif *spdif_priv[2];
 
 static int aml_dai_set_spdif_sysclk(struct snd_soc_dai *cpu_dai,
 				int clk_id, unsigned int freq, int dir);
@@ -115,6 +116,8 @@ struct aml_spdif {
 	/* mixer control vals */
 	bool mute;
 	enum SPDIF_SRC spdifin_src;
+	int clk_tuning_enable;
+	bool on;
 };
 
 static const struct snd_pcm_hardware aml_spdif_hardware = {
@@ -322,6 +325,20 @@ int spdifin_source_set_enum(
 	return 0;
 }
 
+
+int spdif_set_audio_clk(int id,
+		struct clk *clk_src, int rate, int same)
+{
+	if (spdif_priv[id]->on && same) {
+		pr_debug("spdif priority");
+		return 0;
+	}
+
+	clk_set_parent(spdif_priv[id]->clk_spdifout, clk_src);
+	clk_set_rate(spdif_priv[id]->clk_spdifout, rate);
+	return 0;
+}
+
 static int spdif_clk_get(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
@@ -401,7 +418,9 @@ static const struct snd_kcontrol_new snd_spdif_controls[] = {
 				0, aml_get_hdmi_out_audio,
 				aml_set_hdmi_out_audio),
 #endif
+};
 
+static const struct snd_kcontrol_new snd_spdif_clk_controls[] = {
 	SOC_SINGLE_EXT("SPDIF CLK Fine Setting",
 				0, 0, 2000000, 0,
 				spdif_clk_get,
@@ -747,9 +766,10 @@ static int aml_spdif_open(struct snd_pcm_substream *substream)
 	snd_soc_set_runtime_hwparams(substream, &aml_spdif_hardware);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		p_spdif->on = true;
 		p_spdif->fddr = aml_audio_register_frddr(dev,
 			p_spdif->actrl,
-			aml_spdif_ddr_isr, substream);
+			aml_spdif_ddr_isr, substream, false);
 		if (p_spdif->fddr == NULL) {
 			dev_err(dev, "failed to claim from ddr\n");
 			return -ENXIO;
@@ -791,6 +811,7 @@ static int aml_spdif_close(struct snd_pcm_substream *substream)
 	pr_info("%s\n", __func__);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		p_spdif->on = false;
 		aml_audio_unregister_frddr(p_spdif->dev, substream);
 	} else {
 		aml_audio_unregister_toddr(p_spdif->dev, substream);
@@ -986,6 +1007,15 @@ static int aml_dai_spdif_probe(struct snd_soc_dai *cpu_dai)
 			pr_err("%s, failed add snd spdif controls\n", __func__);
 	}
 
+	if (p_spdif->clk_tuning_enable == 1) {
+		ret = snd_soc_add_dai_controls(cpu_dai,
+				snd_spdif_clk_controls,
+				ARRAY_SIZE(snd_spdif_clk_controls));
+		if (ret < 0)
+			pr_err("%s, failed add snd spdif clk controls\n",
+				__func__);
+	}
+
 	return 0;
 }
 
@@ -1140,72 +1170,41 @@ static int aml_dai_spdif_prepare(
 		spdif_get_channel_status_info(&chsts, runtime->rate);
 		spdif_set_channel_status_info(&chsts, p_spdif->id);
 
-#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
-		/* TOHDMITX_CTRL0
-		 * ODROID is spdif_b only would notify to hdmitx
-		 */
-		if (p_spdif->id == 1) {
-			spdifout_to_hdmitx_ctrl(p_spdif->id);
-			/* notify to hdmitx */
-			spdif_notify_to_hdmitx(substream);
-		}
-#else
 		/* TOHDMITX_CTRL0
 		 * Both spdif_a/spdif_b would notify to hdmitx
 		 */
 		spdifout_to_hdmitx_ctrl(p_spdif->id);
 		/* notify to hdmitx */
 		spdif_notify_to_hdmitx(substream);
-#endif
 
 	} else {
 		struct toddr *to = p_spdif->tddr;
 		struct toddr_fmt fmt;
 		unsigned int msb, lsb, toddr_type;
 
-		if (loopback_is_enable()) {
-			switch (bit_depth) {
-			case 8:
-			case 16:
-			case 32:
-				toddr_type = 0;
-				break;
-			case 24:
-				toddr_type = 4;
-				break;
-			default:
-				pr_err(
-					"runtime format invalid bit_depth: %d\n",
-					bit_depth);
-				return -EINVAL;
-			}
-			msb = 32 - 1;
-			lsb = 32 - bit_depth;
-		} else {
-			switch (bit_depth) {
-			case 8:
-			case 16:
-				toddr_type = 0;
-				break;
-			case 24:
-				toddr_type = 4;
-				break;
-			case 32:
-				toddr_type = 3;
-				break;
-			default:
-				dev_err(p_spdif->dev,
-					"runtime format invalid bit_depth: %d\n",
-					bit_depth);
-				return -EINVAL;
-			}
-
-			msb = 28 - 1;
-			if (bit_depth <= 24)
-				lsb = 28 - bit_depth;
-			else
-				lsb = 4;
+		switch (bit_depth) {
+		case 8:
+		case 16:
+			toddr_type = 0;
+			break;
+		case 24:
+			toddr_type = 4;
+			break;
+		case 32:
+			toddr_type = 3;
+			break;
+		default:
+			dev_err(p_spdif->dev,
+				"runtime format invalid bit_depth: %d\n",
+				bit_depth);
+			return -EINVAL;
 		}
+
+		msb = 28 - 1;
+		if (bit_depth <= 24)
+			lsb = 28 - bit_depth;
+		else
+			lsb = 4;
 
 		// to ddr spdifin
 		fmt.type       = toddr_type;
@@ -1251,6 +1250,8 @@ static int aml_dai_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			dev_info(substream->pcm->card->dev, "S/PDIF Playback enable\n");
+			aml_spdif_enable(p_spdif->actrl,
+			    substream->stream, p_spdif->id, true);
 			aml_frddr_enable(p_spdif->fddr, 1);
 			udelay(100);
 			aml_spdif_mute(p_spdif->actrl,
@@ -1258,10 +1259,9 @@ static int aml_dai_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 		} else {
 			dev_info(substream->pcm->card->dev, "S/PDIF Capture enable\n");
 			aml_toddr_enable(p_spdif->tddr, 1);
+			aml_spdif_enable(p_spdif->actrl,
+			    substream->stream, p_spdif->id, true);
 		}
-
-		aml_spdif_enable(p_spdif->actrl,
-			substream->stream, p_spdif->id, true);
 
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -1269,21 +1269,28 @@ static int aml_dai_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			dev_info(substream->pcm->card->dev, "S/PDIF Playback disable\n");
+			/* continuous-clock, spdif out is not disable,
+			 * only mute, ensure spdif outputs zero data.
+			 */
+			if (p_spdif->clk_cont) {
+				aml_spdif_mute(p_spdif->actrl,
+					substream->stream, p_spdif->id, true);
+			} else {
+				aml_spdif_enable(p_spdif->actrl,
+					substream->stream, p_spdif->id, false);
+			}
+
+			if (p_spdif->chipinfo &&
+				p_spdif->chipinfo->async_fifo)
+				aml_frddr_check(p_spdif->fddr);
 			aml_frddr_enable(p_spdif->fddr, 0);
 		} else {
 			dev_info(substream->pcm->card->dev, "S/PDIF Capture disable\n");
 			aml_toddr_enable(p_spdif->tddr, 0);
-		}
-		/* continuous-clock, spdif out is not disable,
-		 * only mute, ensure spdif outputs zero data.
-		 */
-		if (p_spdif->clk_cont
-			&& (substream->stream == SNDRV_PCM_STREAM_PLAYBACK))
-			aml_spdif_mute(p_spdif->actrl,
-				substream->stream, p_spdif->id, true);
-		else
 			aml_spdif_enable(p_spdif->actrl,
-				substream->stream, p_spdif->id, false);
+					substream->stream, p_spdif->id, false);
+		}
+
 		break;
 	default:
 		return -EINVAL;
@@ -1339,8 +1346,13 @@ static void aml_set_spdifclk(struct aml_spdif *p_spdif)
 		mpll_freq = p_spdif->sysclk_freq * 58 / 2; /* 96k */
 #endif
 		clk_set_rate(p_spdif->sysclk, mpll_freq);
+		/*
 		clk_set_rate(p_spdif->clk_spdifout,
 			p_spdif->sysclk_freq);
+		*/
+		spdif_set_audio_clk(p_spdif->id,
+			p_spdif->sysclk,
+			p_spdif->sysclk_freq, 0);
 
 		ret = clk_prepare_enable(p_spdif->sysclk);
 		if (ret) {
@@ -1503,6 +1515,12 @@ static int aml_spdif_parse_of(struct platform_device *pdev)
 		if (ret < 0)
 			p_spdif->auto_asrc = 0;
 
+		if (p_spdif->auto_asrc < RATE_OFF ||
+				p_spdif->auto_asrc > RATE_192K) {
+			pr_info("%s(), inval asrc setting %d\n",
+				__func__, p_spdif->auto_asrc);
+			p_spdif->auto_asrc = RATE_OFF;
+		}
 		pr_debug("SPDIF id %d asrc_id:%d auto_asrc:%d\n",
 			p_spdif->id,
 			p_spdif->asrc_id,
@@ -1528,6 +1546,15 @@ static int aml_spdif_parse_of(struct platform_device *pdev)
 		dev_err(dev, "Can't retrieve spdifout clock\n");
 		return PTR_ERR(p_spdif->clk_spdifout);
 	}
+
+	ret = of_property_read_u32(pdev->dev.of_node,
+				"clk_tuning_enable",
+				&p_spdif->clk_tuning_enable);
+	if (ret < 0)
+		p_spdif->clk_tuning_enable = 0;
+	else
+		pr_info("Spdif id %d tuning clk enable:%d\n",
+			p_spdif->id, p_spdif->clk_tuning_enable);
 
 	return 0;
 }
@@ -1595,7 +1622,7 @@ static int aml_spdif_platform_probe(struct platform_device *pdev)
 		dev_err(dev, "devm_snd_soc_register_component failed\n");
 		return ret;
 	}
-
+	spdif_priv[aml_spdif->id] = aml_spdif;
 	pr_info("%s, register soc platform\n", __func__);
 
 	return devm_snd_soc_register_platform(dev, &aml_spdif_platform);
