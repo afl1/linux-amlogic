@@ -33,7 +33,7 @@ enum ge2d_memtype_s {
 	AML_GE2D_MEM_INVALID,
 };
 
-
+#define MAX_PLANE         4
 #define MAX_BITBLT_WORK_CONFIG 4
 #define MAX_GE2D_CMD  32   /* 64 */
 
@@ -616,6 +616,14 @@ struct ge2d_cmd_s {
 	unsigned char    hang_flag;
 };
 
+struct ge2d_canvas_cfg_s {
+	int canvas_used;
+	int canvas_index;
+	unsigned int stride;
+	unsigned int height;
+	unsigned long phys_addr;
+};
+
 struct ge2d_dma_cfg_s {
 	int dma_used;
 	void *dma_cfg;
@@ -631,9 +639,12 @@ struct ge2d_config_s {
 	unsigned int	v_scale_coef_type;
 	unsigned int	h_scale_coef_type;
 	unsigned int	update_flag;
-	struct ge2d_dma_cfg_s src_dma_cfg;
-	struct ge2d_dma_cfg_s src2_dma_cfg;
-	struct ge2d_dma_cfg_s dst_dma_cfg;
+	struct ge2d_canvas_cfg_s src_canvas_cfg[MAX_PLANE];
+	struct ge2d_canvas_cfg_s src2_canvas_cfg[MAX_PLANE];
+	struct ge2d_canvas_cfg_s dst_canvas_cfg[MAX_PLANE];
+	struct ge2d_dma_cfg_s src_dma_cfg[MAX_PLANE];
+	struct ge2d_dma_cfg_s src2_dma_cfg[MAX_PLANE];
+	struct ge2d_dma_cfg_s dst_dma_cfg[MAX_PLANE];
 };
 
 struct ge2d_dma_buf_s {
