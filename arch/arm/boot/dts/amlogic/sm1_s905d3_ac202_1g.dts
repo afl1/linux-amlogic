@@ -675,7 +675,7 @@
 				system-clock-frequency = <12288000>;
 			};
 			tdmccodec: codec {
-				sound-dai = <&dummy_codec>;
+				sound-dai = <&dummy_codec  &dummy_codec>;
 			};
 		};
 
@@ -1106,7 +1106,8 @@
 		#sound-dai-cells = <0>;
 		reg = <0x31>;
 		status = "okay";
-		reset_pin = <&gpio GPIOAO_9 0>;
+		reset_pin = <&gpio_ao GPIOAO_9 0>;
+		enable_pin = <&gpio GPIOC_4 0>;
 		no_mclk;
 	};
 
