@@ -1,7 +1,7 @@
 /*
- * arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+ * arch/arm64/boot/dts/amlogic/kvim_linux.dts
  *
- * Copyright (C) 2017 Amlogic, Inc. All rights reserved.
+ * Copyright (C) 2019 Wesion, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,14 +19,17 @@
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include "mesongxl.dtsi"
-#include "partition_mbox_normal.dtsi"
+#include "meson_drm.dtsi"
+#include "partition_linux.dtsi"
 / {
-	model = "Amlogic";
-	amlogic-dt-id = "gxl_p212_2g";
+	model = "Khadas VIM";
+	amlogic-dt-id = "gxl_kvim";
 	compatible = "amlogic, Gxl";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
+
+	chosen { };
 
 	aliases {
 		serial0 = &uart_AO;
@@ -35,12 +38,10 @@
 		serial3 = &uart_C;
 		serial4 = &uart_AO_B;
 	};
-
 	ion_dev {
 		compatible = "amlogic, ion_dev";
 		memory-region = <&ion_reserved>;
 	};
-
 	memory@00000000 {
 		device_type = "memory";
 		linux,usable-memory = <0x0 0x0100000 0x0 0x7ff00000>;
@@ -51,13 +52,6 @@
 		#size-cells = <2>;
 		ranges;
 		/* global autoconfigured region for contiguous allocations */
-		ramoops@0x07400000 {
-			compatible = "ramoops";
-			reg = <0x0 0x07400000 0x0 0x00100000>;
-			record-size = <0x8000>;
-			console-size = <0x8000>;
-			ftrace-size = <0x20000>;
-		};
 		secmon_reserved:linux,secmon {
 			compatible = "shared-dma-pool";
 			reusable;
@@ -71,14 +65,13 @@
 			reg = <0x0 0x05300000 0x0 0x2000000>;
 			no-map;
 		};
-		logo_reserved:linux,meson-fb {
+		ion_reserved:linux,ion-dev {
 			compatible = "shared-dma-pool";
 			reusable;
-			size = <0x0 0x800000>;
+			size = <0x0 0x8000000>;
 			alignment = <0x0 0x400000>;
-			alloc-ranges = <0x0 0x7f800000 0x0 0x800000>;
 		};
-		//don't put other dts in front of logo_reserved
+		//don't put other dts in front of fb_reserved
 
 		//di_reserved:linux,di {
 		//	compatible = "amlogic, di-mem";
@@ -93,13 +86,6 @@
 			size = <0x0 0x2000000>;
 			alignment = <0x0 0x400000>;
 		};
-		ion_reserved:linux,ion-dev {
-			compatible = "shared-dma-pool";
-			reusable;
-			size = <0x0 0x7C00000>;
-			alignment = <0x0 0x400000>;
-		};
-
 		/*  vdin0 CMA pool */
 		//vdin0_cma_reserved:linux,vdin0_cma {
 		//	compatible = "shared-dma-pool";
@@ -126,8 +112,7 @@
 		codec_mm_cma:linux,codec_mm_cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			/* ion_codec_mm max can alloc size 80M*/
-			size = <0x0 0x13400000>;
+			size = <0x0 0x10400000>;
 			alignment = <0x0 0x400000>;
 			linux,contiguous-region;
 		};
@@ -147,14 +132,10 @@
 		};
 	};
 
-	amlogic_battery:dummy-battery {
-		compatible = "amlogic, dummy-battery";
-		status = "disabled";
-	};
-
-	amlogic_charger:dummy-charger {
-		compatible = "amlogic, dummy-charger";
-		status = "disabled";
+	gpiomem {
+		compatible = "amlogic, gpiomem";
+		reg = <0x0 0xda834000 0x0 0x1000>;
+		status = "okay";
 	};
 
 	bt-dev{
@@ -170,7 +151,7 @@
 		status = "okay";
 		interrupt_pin = <&gpio       GPIOX_7       GPIO_ACTIVE_HIGH>;
 		irq_trigger_type = "GPIO_IRQ_LOW";
-		dhd_static_buf;    //dhd_static_buf support
+                dhd_static_buf;    //dhd_static_buf support
 		power_on_pin = <&gpio       GPIOX_6       GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&wifi_32k_pins>;
@@ -340,68 +321,6 @@
 			 */
 		};
 	};
-	mtd_nand{
-		compatible = "amlogic, aml_mtd_nand";
-		dev_name = "mtdnand";
-		status = "disabled";
-		reg = <0x0 0xd0074800 0x0 0x200>;
-		interrupts = <	0 34 1 >;
-		pinctrl-names = "nand_rb_mod","nand_norb_mod", "nand_cs_only";
-		pinctrl-0 = <&all_nand_pins>;
-		pinctrl-1 = <&all_nand_pins>;
-		pinctrl-2 = <&nand_cs_pins>;
-		device_id = <0>;
-		plat-names = "bootloader","nandnormal";
-		plat-num = <2>;
-		plat-part-0 = <&bootloader>;
-		plat-part-1 = <&nandnormal>;
-		bootloader: bootloader{
-			enable_pad ="ce0";
-			busy_pad = "rb0";
-			timming_mode = "mode5";
-			bch_mode = "bch60_1k";
-			t_rea = <20>;
-			t_rhoh = <15>;
-			chip_num = <1>;
-			part_num = <0>;
-			rb_detect = <1>;
-		};
-		nandnormal: nandnormal{
-			enable_pad ="ce0","ce1";
-			busy_pad = "rb0","rb1";
-			timming_mode = "mode5";
-			bch_mode = "bch60_1k";
-			plane_mode = "twoplane";
-			t_rea = <20>;
-			t_rhoh = <15>;
-			chip_num = <2>;
-			part_num = <3>;
-			partition = <&nand_partitions>;
-			rb_detect = <1>;
-		};
-		nand_partitions:nand_partition{
-			logo{
-				offset=<0x0 0x0>;
-				size=<0x0 0x200000>;
-			};
-			recovery{
-				offset=<0x0 0x0>;
-				size=<0x0 0x1000000>;
-			};
-			boot{
-				offset=<0x0 0x0>;
-				size=<0x0 0xC00000>;
-			};
-			system{
-				offset=<0x0 0x0>;
-				size=<0x0 0xDC40000>;
-			};
-			data{
-				offset=<0xffffffff 0xffffffff>;
-				size=<0x0 0x0>;
-			};
-		};
-	};
 
 	ethmac: ethernet@0xc9410000 {
 			compatible = "amlogic, gxbb-eth-dwmac";
@@ -500,7 +419,7 @@
 			"mailbox_2";
 	};
 
-	gpio_keypad{
+	gpio_keypad {
 		compatible = "amlogic, gpio_keypad";
 		status = "okay";
 		scan_period = <20>;
@@ -745,27 +664,27 @@
 	sysled {
 		compatible = "amlogic, sysled";
 		dev_name = "sysled";
-		status = "disabled";
-		led_gpio = <&gpio GPIODV_24 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		led_gpio = <&gpio_ao GPIOAO_9 GPIO_ACTIVE_HIGH>;
 		led_active_low = <1>;
 	};
 
 	meson-fb {
 		compatible = "amlogic, meson-gxl";
-		memory-region = <&logo_reserved>;
 		dev_name = "meson-fb";
 		status = "okay";
 		interrupts = <0 3 1
 			0 89 1>;
 		interrupt-names = "viu-vsync", "rdma";
-		mem_size = <0x00800000 0x01800000 0x00100000>;
-		/* uboot logo,fb0/fb1 memory size,if afbcd fb0=0x01851000*/
+		mem_size = <0x00800000 0x1800000 0x00100000>;
+		/* uboot logo,fb0/fb1 memory size,if afbcd fb0=0x01851000 */
 		display_mode_default = "1080p60hz";
 		scale_mode = <1>;
 		/** 0:VPU free scale 1:OSD free scale 2:OSD super scale */
 		display_size_default = <1920 1080 1920 3240 32>;
 		/*1920*1080*4*3 = 0x17BB000*/
-		logo_addr = "0x7f800000";
+		mem_alloc = <1>;
+		logo_addr = "0x7dc00000";
 	};
 	ge2d {
 		compatible = "amlogic, ge2d-gxl";
@@ -912,8 +831,6 @@
 				"Ext Spk","LOUTL",
 				"Ext Spk","LOUTR";
 
-		mute_gpio-gpios = <&gpio GPIOH_5 0>;
-		mute_inv;
 		hp_disable;
 		hp_paraments = <800 300 0 5 1>;
 		pinctrl-names = "audio_i2s";
@@ -969,13 +886,6 @@
 		io_reg_base{
 			reg = <0x0 0xc8810000 0x0 0x4000>;
 		};
-	};
-
-	picdec {
-		compatible = "amlogic, picdec";
-		memory-region = <&picdec_cma_reserved>;
-		dev_name = "picdec";
-		status = "okay";
 	};
 
 	ppmgr {
@@ -1104,7 +1014,7 @@
 		compatible = "amlogic, unifykey";
 		status = "ok";
 
-		unifykey-num = <17>;
+		unifykey-num = <16>;
 		unifykey-index-0 = <&keysn_0>;
 		unifykey-index-1 = <&keysn_1>;
 		unifykey-index-2 = <&keysn_2>;
@@ -1121,7 +1031,6 @@
 		unifykey-index-13= <&keysn_13>;
 		unifykey-index-14= <&keysn_14>;
 		unifykey-index-15= <&keysn_15>;
-		unifykey-index-16= <&keysn_16>;
 
 		keysn_0: key_0{
 			key-name = "usid";
@@ -1202,11 +1111,6 @@
 			key-permit = "read","write","del";
 		};
 		keysn_15:key_15{
-			key-name = "region_code";
-			key-device = "normal";
-			key-permit = "read","write","del";
-		};
-		keysn_16:key_16{
 			key-name = "netflix_mgkid";
 			key-device = "secure";
 			key-permit = "read","write","del";
@@ -1225,3 +1129,27 @@
 	status = "okay";
 };
 
+&i2c0 {
+	status = "okay";
+	clock-frequency = <400000>;
+	pinctrl-names="default";
+	pinctrl-0=<&a_i2c_master>;
+};
+
+&i2c1 {
+	status = "okay";
+	clock-frequency = <400000>;
+	pinctrl-names="default";
+	pinctrl-0=<&b_i2c_master>;
+
+	hym8563: hym8563@51 {
+		compatible = "haoyu,hym8563";
+		reg = <0x51>;
+
+		#clock-cells = <0>;
+	};
+};
+
+&uart_AO_B {
+	status = "okay";
+};
