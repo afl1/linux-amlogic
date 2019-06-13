@@ -69,9 +69,9 @@ struct aml_card_data {
 	int spk_mute_gpio;
 	bool spk_mute_active_low;
 	struct gpio_desc *avout_mute_desc;
-	struct loopback_cfg lb_cfg;
 	struct timer_list timer;
 	struct work_struct work;
+	struct work_struct init_work;
 	bool hp_last_state;
 	bool hp_cur_state;
 	bool hp_det_status;
@@ -440,9 +440,6 @@ static int aml_card_hw_params(struct snd_pcm_substream *substream,
 	else if (dai_props->mclk_fs)
 		mclk_fs = dai_props->mclk_fs;
 
-	if (params_rate(params) > 192000)
-		mclk_fs = 128;
-
 	if (mclk_fs) {
 		mclk = params_rate(params) * mclk_fs;
 
@@ -465,8 +462,6 @@ static int aml_card_hw_params(struct snd_pcm_substream *substream,
 			goto err;
 	}
 
-	if (loopback_is_enable() && mclk)
-		loopback_hw_params(substream, params, &priv->lb_cfg, mclk);
 	return 0;
 err:
 	return ret;
@@ -474,23 +469,11 @@ err:
 
 int aml_card_prepare(struct snd_pcm_substream *substream)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct aml_card_data *priv = snd_soc_card_get_drvdata(rtd->card);
-
-	if (loopback_is_enable())
-		loopback_prepare(substream, &priv->lb_cfg);
-
 	return 0;
 }
 
 int aml_card_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct aml_card_data *priv = snd_soc_card_get_drvdata(rtd->card);
-
-	if (loopback_is_enable())
-		loopback_trigger(substream, cmd, &priv->lb_cfg);
-
 	return 0;
 }
 
@@ -735,7 +718,7 @@ static int spk_mute_get(struct snd_kcontrol *kcontrol,
 }
 
 static const struct snd_kcontrol_new card_controls[] = {
-	SOC_SINGLE_BOOL_EXT("LINE_OUT mute", 0,
+	SOC_SINGLE_BOOL_EXT("SPK mute", 0,
 			    spk_mute_get,
 			    spk_mute_set),
 };
@@ -750,7 +733,7 @@ static int aml_card_parse_gpios(struct device_node *node,
 	bool active_low;
 	int ret;
 
-	gpio = of_get_named_gpio_flags(node, "mute_gpio", 0, &flags);
+	gpio = of_get_named_gpio_flags(node, "spk_mute", 0, &flags);
 	priv->spk_mute_gpio = gpio;
 
 	if (gpio_is_valid(gpio)) {
@@ -758,26 +741,40 @@ static int aml_card_parse_gpios(struct device_node *node,
 		flags = active_low ? GPIOF_OUT_INIT_HIGH : GPIOF_OUT_INIT_LOW;
 		priv->spk_mute_active_low = active_low;
 
-		ret = devm_gpio_request_one(dev, gpio, flags, "line_mute");
-		if (ret < 0)
-			return ret;
-
-		ret = snd_soc_add_card_controls(soc_card, card_controls,
+		ret = devm_gpio_request_one(dev, gpio, flags, "spk_mute");
+		if (ret >= 0) {
+			snd_soc_add_card_controls(soc_card, card_controls,
 					ARRAY_SIZE(card_controls));
-
-		pr_info("add line-out mute controls\n");
+		}
 	}
-#if !defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
-	priv->avout_mute_desc = gpiod_get(dev,
-				"avout_mute",
-				GPIOD_OUT_HIGH);
 
-	gpiod_direction_output(priv->avout_mute_desc,
-		GPIOF_OUT_INIT_HIGH);
-	pr_info("set av out GPIOF_OUT_INIT_HIGH!\n");
-#endif
+	priv->avout_mute_desc = gpiod_get(dev,
+				"avout_mute", GPIOF_OUT_INIT_LOW);
+	if (!IS_ERR(priv->avout_mute_desc)) {
+		msleep(500);
+		gpiod_direction_output(priv->avout_mute_desc,
+			GPIOF_OUT_INIT_HIGH);
+		pr_info("av out status: %s\n",
+			gpiod_get_value(priv->avout_mute_desc) ?
+			"high" : "low");
+
+	}
 
 	return 0;
+}
+
+static void aml_init_work(struct work_struct *init_work)
+{
+	struct aml_card_data *priv = NULL;
+	struct device *dev = NULL;
+	struct device_node *np = NULL;
+
+	priv = container_of(init_work,
+			struct aml_card_data, init_work);
+	dev = aml_priv_to_dev(priv);
+	np = dev->of_node;
+
+	aml_card_parse_gpios(np, priv);
 }
 
 static int aml_card_parse_of(struct device_node *node,
@@ -785,7 +782,6 @@ static int aml_card_parse_of(struct device_node *node,
 {
 	struct device *dev = aml_priv_to_dev(priv);
 	struct device_node *dai_link;
-	struct device_node *lb_link;
 	int ret;
 
 	if (!node)
@@ -811,14 +807,6 @@ static int aml_card_parse_of(struct device_node *node,
 
 	/* Factor to mclk, used in hw_params() */
 	of_property_read_u32(node, PREFIX "mclk-fs", &priv->mclk_fs);
-
-	/* Loopback */
-	lb_link = of_parse_phandle(node, PREFIX "loopback", 0);
-	if (lb_link) {
-		ret = loopback_parse_of(lb_link, &priv->lb_cfg);
-		if (ret < 0)
-			pr_err("failed parse loopback, ignore it\n");
-	}
 
 	/* Single/Muti DAI link(s) & New style of DT node */
 	if (dai_link) {
@@ -850,11 +838,9 @@ static int aml_card_parse_of(struct device_node *node,
 
 card_parse_end:
 	of_node_put(dai_link);
-	of_node_put(lb_link);
 
 	return ret;
 }
-
 
 static struct aml_chipset_info g12a_chipset_info = {
 	.spdif_b        = true,
@@ -904,6 +890,13 @@ static int aml_card_probe(struct platform_device *pdev)
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
+
+	/* chipset related */
+	priv->chipinfo = (struct aml_chipset_info *)
+		of_device_get_match_data(&pdev->dev);
+
+	if (!priv->chipinfo)
+		pr_warn_once("check whether to update sound card init data\n");
 
 	dai_props = devm_kzalloc(dev, sizeof(*dai_props) * num, GFP_KERNEL);
 	dai_link  = devm_kzalloc(dev, sizeof(*dai_link)  * num, GFP_KERNEL);
@@ -962,13 +955,6 @@ static int aml_card_probe(struct platform_device *pdev)
 					sizeof(priv->dai_props->codec_dai));
 	}
 
-
-	priv->chipinfo = (struct aml_chipset_info *)
-		of_device_get_match_data(&pdev->dev);
-
-	if (!priv->chipinfo)
-		pr_warn_once("check whether to update sound card init data\n");
-
 	snd_soc_card_set_drvdata(&priv->snd_card, priv);
 
 	ret = devm_snd_soc_register_card(&pdev->dev, &priv->snd_card);
@@ -995,9 +981,11 @@ static int aml_card_probe(struct platform_device *pdev)
 		audio_jack_detect(priv);
 		audio_extcon_register(priv, dev);
 	}
-	ret = aml_card_parse_gpios(np, priv);
-	if (ret >= 0)
-		return ret;
+
+	INIT_WORK(&priv->init_work, aml_init_work);
+	schedule_work(&priv->init_work);
+
+	return 0;
 err:
 	pr_err("%s error ret:%d\n", __func__, ret);
 	aml_card_clean_reference(&priv->snd_card);
