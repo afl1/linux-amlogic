@@ -945,6 +945,78 @@ static struct notifier_block g12b_cpu_nb_data = {
 	.notifier_call = g12b_cpu_clk_notifier_cb,
 };
 
+static int g12a_cpu_clk_notifier_cb(struct notifier_block *nb,
+				    unsigned long event, void *data)
+{
+	struct clk_hw **hws = g12a_clk_hws;
+	struct clk_hw *cpu_clk_hw, *parent_clk_hw;
+	struct clk *cpu_clk, *parent_clk;
+	int ret;
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		parent_clk_hw = hws[CLKID_CPU_FCLK_P];
+		break;
+	case POST_RATE_CHANGE:
+		parent_clk_hw = &g12a_sys_pll.hw;
+		break;
+	default:
+		return NOTIFY_DONE;
+	}
+
+	cpu_clk_hw = hws[CLKID_CPU_CLK];
+	cpu_clk = __clk_lookup(clk_hw_get_name(cpu_clk_hw));
+	parent_clk = __clk_lookup(clk_hw_get_name(parent_clk_hw));
+
+	ret = clk_set_parent(cpu_clk, parent_clk);
+	if (ret)
+		return notifier_from_errno(ret);
+
+	udelay(80);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block g12a_cpu_nb_data = {
+	.notifier_call = g12a_cpu_clk_notifier_cb,
+};
+
+static int g12b_cpu_clk_notifier_cb(struct notifier_block *nb,
+				    unsigned long event, void *data)
+{
+	struct clk_hw **hws = g12a_clk_hws;
+	struct clk_hw *cpu_clk_hw, *parent_clk_hw;
+	struct clk *cpu_clk, *parent_clk;
+	int ret;
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		parent_clk_hw = hws[CLKID_CPU_FCLK_P];
+		break;
+	case POST_RATE_CHANGE:
+		parent_clk_hw = &g12b_sys1_pll.hw;
+		break;
+	default:
+		return NOTIFY_DONE;
+	}
+
+	cpu_clk_hw = hws[CLKID_CPU_CLK];
+	cpu_clk = __clk_lookup(clk_hw_get_name(cpu_clk_hw));
+	parent_clk = __clk_lookup(clk_hw_get_name(parent_clk_hw));
+
+	ret = clk_set_parent(cpu_clk, parent_clk);
+	if (ret)
+		return notifier_from_errno(ret);
+
+	udelay(80);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block g12b_cpu_nb_data = {
+	.notifier_call = g12b_cpu_clk_notifier_cb,
+};
+
 static void __init g12a_clkc_init(struct device_node *np)
 {
 	int ret = 0, clkid, i;
