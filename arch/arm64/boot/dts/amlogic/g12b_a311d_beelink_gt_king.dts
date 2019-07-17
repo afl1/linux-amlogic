@@ -1,4 +1,4 @@
-#include "g12b_a311d_coreelec.dts"
+#include "coreelec_g12b_a311d.dtsi"
 
 /{
 	model = "Beelink GT-King";
