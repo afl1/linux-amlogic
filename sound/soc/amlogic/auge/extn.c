@@ -17,6 +17,8 @@
  * such as fratv, frhdmirx
  */
 
+/*#define DEBUG*/
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
@@ -134,6 +136,17 @@ static irqreturn_t extn_ddr_isr(int irq, void *devid)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct device *dev = rtd->platform->dev;
 	struct extn *p_extn = (struct extn *)dev_get_drvdata(dev);
+	int timeout_thres = 5;
+
+#ifdef CONFIG_AMLOGIC_MEDIA_TVIN_HDMI
+	int sample_rate_index = get_hdmi_sample_rate_index();
+
+	/*192K audio*/
+	if (sample_rate_index == 7)
+		timeout_thres = 10;
+	else
+		timeout_thres = 5;
+#endif
 
 	if (!snd_pcm_running(substream))
 		return IRQ_HANDLED;
@@ -148,7 +161,7 @@ static irqreturn_t extn_ddr_isr(int irq, void *devid)
 
 			p_extn->frhdmirx_same_cnt++;
 
-			if (p_extn->frhdmirx_same_cnt > 5)
+			if (p_extn->frhdmirx_same_cnt > timeout_thres)
 				frhdmirx_nonpcm2pcm_clr_reset(p_extn);
 
 			if (p_extn->frhdmirx_cnt == 0)
@@ -191,7 +204,7 @@ static int extn_open(struct snd_pcm_substream *substream)
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		p_extn->fddr = aml_audio_register_frddr(dev,
 			p_extn->actrl,
-			extn_ddr_isr, substream);
+			extn_ddr_isr, substream, false);
 		if (p_extn->fddr == NULL) {
 			dev_err(dev, "failed to claim from ddr\n");
 			return -ENXIO;
@@ -382,7 +395,7 @@ static void extn_dai_shutdown(
 	struct snd_pcm_substream *substream,
 	struct snd_soc_dai *cpu_dai)
 {
-	//resample_set(RESAMPLE_A, RATE_OFF);
+	//resample_set(RESAMPLE_A, RATE_OFF, false);
 }
 
 static int extn_dai_prepare(
@@ -506,14 +519,19 @@ static int extn_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 
 			aml_frddr_enable(p_extn->fddr, false);
 		} else {
-			dev_info(substream->pcm->card->dev, "External Capture disable\n");
+			bool toddr_stopped = false;
 
 			if (src == FRATV)
 				fratv_enable(false);
 			else if (src == FRHDMIRX)
 				frhdmirx_enable(false);
+			dev_info(substream->pcm->card->dev, "External Capture disable\n");
 
-			aml_toddr_enable(p_extn->tddr, false);
+			toddr_stopped = aml_toddr_burst_finished(p_extn->tddr);
+			if (toddr_stopped)
+				aml_toddr_enable(p_extn->tddr, false);
+			else
+				pr_err("%s(), toddr may be stuck\n", __func__);
 		}
 		break;
 	default:

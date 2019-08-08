@@ -58,10 +58,14 @@
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			clocks = <&clkc CLKID_CPU_CLK>,
 				<&clkc CLKID_CPU_FCLK_P>,
-				<&clkc CLKID_SYS_PLL>;
+				<&clkc CLKID_SYS_PLL>,
+				<&clkc CLKID_DSU_CLK>,
+				<&clkc CLKID_DSU_PRE_CLK>;
 			clock-names = "core_clk",
 				"low_freq_clk_parent",
-				"high_freq_clk_parent";
+				"high_freq_clk_parent",
+				"dsu_clk",
+				"dsu_pre_parent";
 			operating-points-v2 = <&cpu_opp_table0>;
 			cpu-supply = <&vddcpu0>;
 			voltage-tolerance = <0>;
@@ -76,10 +80,14 @@
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			clocks = <&clkc CLKID_CPU_CLK>,
 				<&clkc CLKID_CPU_FCLK_P>,
-				<&clkc CLKID_SYS_PLL>;
+				<&clkc CLKID_SYS_PLL>,
+				<&clkc CLKID_DSU_CLK>,
+				<&clkc CLKID_DSU_PRE_CLK>;
 			clock-names = "core_clk",
 				"low_freq_clk_parent",
-				"high_freq_clk_parent";
+				"high_freq_clk_parent",
+				"dsu_clk",
+				"dsu_pre_parent";
 			operating-points-v2 = <&cpu_opp_table0>;
 			cpu-supply = <&vddcpu0>;
 			voltage-tolerance = <0>;
@@ -94,10 +102,14 @@
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			clocks = <&clkc CLKID_CPU_CLK>,
 				<&clkc CLKID_CPU_FCLK_P>,
-				<&clkc CLKID_SYS_PLL>;
+				<&clkc CLKID_SYS_PLL>,
+				<&clkc CLKID_DSU_CLK>,
+				<&clkc CLKID_DSU_PRE_CLK>;
 			clock-names = "core_clk",
 				"low_freq_clk_parent",
-				"high_freq_clk_parent";
+				"high_freq_clk_parent",
+				"dsu_clk",
+				"dsu_pre_parent";
 			operating-points-v2 = <&cpu_opp_table0>;
 			cpu-supply = <&vddcpu0>;
 			voltage-tolerance = <0>;
@@ -112,10 +124,14 @@
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			clocks = <&clkc CLKID_CPU_CLK>,
 				<&clkc CLKID_CPU_FCLK_P>,
-				<&clkc CLKID_SYS_PLL>;
+				<&clkc CLKID_SYS_PLL>,
+				<&clkc CLKID_DSU_CLK>,
+				<&clkc CLKID_DSU_PRE_CLK>;
 			clock-names = "core_clk",
 				"low_freq_clk_parent",
-				"high_freq_clk_parent";
+				"high_freq_clk_parent",
+				"dsu_clk",
+				"dsu_pre_parent";
 			operating-points-v2 = <&cpu_opp_table0>;
 			cpu-supply = <&vddcpu0>;
 			voltage-tolerance = <0>;
@@ -456,7 +472,6 @@
 		status = "okay";
 		reg = <0x0 0xFF6345E0 0x0 4>;
 		reg-names = "PREG_STICKY_REG8";
-		store_device = "data";
 	};
 
 	jtag {
@@ -757,6 +772,7 @@
 				compatible = "amlogic,sm1-clkc-2";
 				#clock-cells = <1>;
 				reg = <0x0 0x0 0x0 0x3dc>;
+				own-dsu-clk;
 			};
 		};/* end of hiubus*/
 
@@ -1080,7 +1096,7 @@
 	galcore {
 		compatible = "amlogic, galcore";
 		dev_name = "galcore";
-		status = "disabled";
+		status = "okay";
 		clocks = <&clkc CLKID_VNANOQ_AXI_CLK_COMP>,
 			<&clkc CLKID_VNANOQ_CORE_CLK_COMP>;
 		clock-names = "cts_vipnanoq_axi_clk_composite",
@@ -1097,6 +1113,7 @@
 			0x0 0xffd01088 0x0 0x0
 			/*0xffd01088:reset reg*/
 			>;
+		nn_efuse = <0xff63003c 0x20>;
 	};
 	aocec: aocec {
 		compatible = "amlogic, aocec-sm1";
@@ -1277,15 +1294,13 @@
 			0 32 1
 			0 43 1
 			0 44 1
-			0 45 1
-			0 72 1>;
+			0 45 1>;
 		interrupt-names = "vsync",
 			"demux",
 			"parser",
 			"mailbox_0",
 			"mailbox_1",
-			"mailbox_2",
-			"parser_b";
+			"mailbox_2";
 	};
 
 	vcodec_dec {
@@ -1364,7 +1379,7 @@
 		clocks = <&clkc CLKID_SD_EMMC_C>,
 			   <&clkc CLKID_SD_EMMC_C_P0_COMP>,
 			   <&clkc CLKID_FCLK_DIV2>,
-			   <&clkc CLKID_FCLK_DIV5>,
+			   <&clkc CLKID_FCLK_DIV2P5>,
 			   <&xtal>;
 		clock-names = "core", "clkin0", "clkin1", "clkin2", "xtal";
 
@@ -1822,6 +1837,7 @@
 			function = "emmc";
 			input-enable;
 			bias-pull-up;
+			drive-strength = <3>;
 		};
 	};
 
@@ -1840,6 +1856,7 @@
 			function = "emmc";
 			input-enable;
 			bias-pull-up;
+			drive-strength = <3>;
 		};
 	};
 
@@ -1849,6 +1866,7 @@
 			function = "emmc";
 			input-enable;
 			bias-pull-down;
+			drive-strength = <3>;
 		};
 	};
 
@@ -2130,6 +2148,15 @@
 		mux {
 			groups = "i2c2_sda_z",
 				"i2c2_sck_z";
+			function = "i2c2";
+			drive-strength = <2>;
+		};
+	};
+
+	i2c2_master_pins3:i2c2_pins3 {
+		mux {
+			groups = "i2c2_sda_z10",
+				"i2c2_sck_z11";
 			function = "i2c2";
 			drive-strength = <2>;
 		};

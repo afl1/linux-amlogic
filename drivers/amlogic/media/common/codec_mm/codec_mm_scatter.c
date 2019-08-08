@@ -43,6 +43,7 @@
 
 #include "codec_mm_priv.h"
 #include "codec_mm_scatter_priv.h"
+#define KERNEL_ATRACE_TAG KERNEL_ATRACE_TAG_CODEC_MM
 #include <trace/events/meson_atrace.h>
 
 
@@ -2426,7 +2427,6 @@ int codec_mm_scatter_mgt_delay_free_swith(
 	int is_tvp)
 {
 	struct codec_mm_scatter_mgt *smgt;
-//	unsigned long ret = 0;
 
 	smgt = codec_mm_get_scatter_mgt(is_tvp);
 	codec_mm_list_lock(smgt);

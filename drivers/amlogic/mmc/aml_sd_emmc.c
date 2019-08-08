@@ -1917,7 +1917,6 @@ static void aml_sd_emmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 		}
 		pdata->irq_sdio_sleep = 1;
 	}
-	pdata->irq_sdio_sleep = 1;
 
 	spin_unlock_irqrestore(&host->mrq_lock, flags);
 
@@ -2971,6 +2970,7 @@ static int aml_sd_emmc_card_busy(struct mmc_host *mmc)
 		vconf = readl(host->base + SD_EMMC_CFG);
 		pconf->auto_clk = 1;
 		writel(vconf, host->base + SD_EMMC_CFG);
+		host->sd_sdio_switch_volat_done = 0;
 		if ((host->mem->start == host->data->port_b_base)
 				&& host->data->tdma_f)
 			host->init_volt = 0;
@@ -3129,7 +3129,8 @@ static int meson_mmc_probe(struct platform_device *pdev)
 	host->pinctrl = NULL;
 	host->status = HOST_INVALID;
 	host->is_tunning = 0;
-	host->is_timming = 0;
+	host->find_win = 0;
+	host->cmd_retune = 0;
 
 	if (host->ctrl_ver >= 3)
 		ret = meson_mmc_clk_init_v3(host);
@@ -3654,7 +3655,7 @@ static struct meson_mmc_data mmc_data_tl1 = {
 	.sdmmc.init.core_phase = 3,
 	.sdmmc.init.tx_phase = 0,
 	.sdmmc.init.rx_phase = 0,
-	.sdmmc.hs.core_phase = 3,
+	.sdmmc.hs.core_phase = 1,
 	.sdmmc.ddr.core_phase = 2,
 	.sdmmc.hs2.core_phase = 2,
 	.sdmmc.hs4.core_phase = 0,
@@ -3683,34 +3684,11 @@ static struct meson_mmc_data mmc_data_sm1 = {
 	.sdmmc.ddr.tx_phase = 0,
 	.sdmmc.hs2.core_phase = 2,
 	.sdmmc.hs2.tx_phase = 0,
-	.sdmmc.hs4.tx_delay = 0,
+	.sdmmc.hs4.tx_delay = 16,
 	.sdmmc.sd_hs.core_phase = 3,
 	.sdmmc.sdr104.core_phase = 2,
 	.sdmmc.sdr104.tx_phase = 0,
 };
-
-static struct meson_mmc_data mmc_data_tm2 = {
-	.chip_type = MMC_CHIP_TM2,
-	.port_a_base = 0xffe03000,
-	.port_b_base = 0xffe05000,
-	.port_c_base = 0xffe07000,
-	.pinmux_base = 0xff634400,
-	.clksrc_base = 0xff63c000,
-	.ds_pin_poll = 0x3a,
-	.ds_pin_poll_en = 0x48,
-	.ds_pin_poll_bit = 13,
-	.sdmmc.init.core_phase = 3,
-	.sdmmc.init.tx_phase = 0,
-	.sdmmc.init.rx_phase = 0,
-	.sdmmc.hs.core_phase = 3,
-	.sdmmc.ddr.core_phase = 2,
-	.sdmmc.hs2.core_phase = 2,
-	.sdmmc.hs4.core_phase = 0,
-	.sdmmc.hs4.tx_delay = 16,
-	.sdmmc.sd_hs.core_phase = 2,
-	.sdmmc.sdr104.core_phase = 2,
-};
-
 static const struct of_device_id meson_mmc_of_match[] = {
 	{
 		.compatible = "amlogic, meson-mmc-gxbb",
@@ -3767,10 +3745,6 @@ static const struct of_device_id meson_mmc_of_match[] = {
 	{
 		.compatible = "amlogic, meson-mmc-sm1",
 		.data = &mmc_data_sm1,
-	},
-	{
-		.compatible = "amlogic, meson-mmc-tm2",
-		.data = &mmc_data_tm2,
 	},
 
 	{}

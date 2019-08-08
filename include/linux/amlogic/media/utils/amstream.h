@@ -119,31 +119,6 @@
 #define  AMSTREAM_IOC_GET_3D_TYPE  _IOW((_A_M), 0x3d, unsigned int)
 #define  AMSTREAM_IOC_GET_SOURCE_VIDEO_3D_TYPE  _IOW((_A_M), 0x3e, unsigned int)
 
-#define AMSTREAM_IOC_GLOBAL_GET_VIDEOPIP_OUTPUT  _IOR((_A_M), 0x2b, int)
-#define AMSTREAM_IOC_GLOBAL_SET_VIDEOPIP_OUTPUT  _IOW((_A_M), 0x2c, int)
-#define AMSTREAM_IOC_GET_VIDEOPIP_DISABLE  _IOR((_A_M), 0x2d, int)
-#define AMSTREAM_IOC_SET_VIDEOPIP_DISABLE  _IOW((_A_M), 0x2e, int)
-#define AMSTREAM_IOC_GET_VIDEOPIP_AXIS   _IOR((_A_M), 0x2f, int)
-#define AMSTREAM_IOC_SET_VIDEOPIP_AXIS   _IOW((_A_M), 0x30, int)
-#define AMSTREAM_IOC_GET_VIDEOPIP_CROP   _IOR((_A_M), 0x31, int)
-#define AMSTREAM_IOC_SET_VIDEOPIP_CROP   _IOW((_A_M), 0x32, int)
-#define AMSTREAM_IOC_GET_PIP_SCREEN_MODE _IOR((_A_M), 0x33, int)
-#define AMSTREAM_IOC_SET_PIP_SCREEN_MODE _IOW((_A_M), 0x34, int)
-#define AMSTREAM_IOC_GET_PIP_ZORDER  _IOW((_A_M), 0x35, unsigned int)
-#define AMSTREAM_IOC_SET_PIP_ZORDER  _IOW((_A_M), 0x36, unsigned int)
-
-#define AMSTREAM_IOC_GET_ZORDER  _IOW((_A_M), 0x37, unsigned int)
-#define AMSTREAM_IOC_SET_ZORDER  _IOW((_A_M), 0x38, unsigned int)
-
-#define AMSTREAM_IOC_QUERY_LAYER  _IOW((_A_M), 0x39, unsigned int)
-#define AMSTREAM_IOC_ALLOC_LAYER  _IOW((_A_M), 0x3a, unsigned int)
-#define AMSTREAM_IOC_FREE_LAYER  _IOW((_A_M), 0x3b, unsigned int)
-
-/* VPP.3D IOCTL command list^M */
-#define  AMSTREAM_IOC_SET_3D_TYPE  _IOW((_A_M), 0x3c, unsigned int)
-#define  AMSTREAM_IOC_GET_3D_TYPE  _IOW((_A_M), 0x3d, unsigned int)
-#define  AMSTREAM_IOC_GET_SOURCE_VIDEO_3D_TYPE  _IOW((_A_M), 0x3e, unsigned int)
-
 #define AMSTREAM_IOC_APTS             _IOR((_A_M), 0x40, int)
 #define AMSTREAM_IOC_VPTS             _IOR((_A_M), 0x41, int)
 #define AMSTREAM_IOC_PCRSCR           _IOR((_A_M), 0x42, int)
@@ -292,6 +267,7 @@ enum FRAME_BASE_VIDEO_PATH {
 	FRAME_BASE_PATH_AMVIDEO2,
 	FRAME_BASE_PATH_V4L_VIDEO,
 	FRAME_BASE_PATH_TUNNEL_MODE,
+	FRAME_BASE_PATH_V4L_OSD,
 	FRAME_BASE_PATH_MAX
 };
 
@@ -777,11 +753,10 @@ struct av_param_qosinfo_t {
 	struct vframe_qos_s vframe_qos[QOS_FRAME_NUM];
 };
 
-
-#define SUPPORT_VDEC_NUM	(20)
+#define SUPPORT_VDEC_NUM	(64)
 int vcodec_profile_register(const struct codec_profile_t *vdec_profile);
 ssize_t vcodec_profile_read(char *buf);
-
+bool is_support_profile(char *name);
 #ifdef __KERNEL__
 #include <linux/interrupt.h>
 

@@ -28,7 +28,6 @@
 
 #define DEFAULT_CMD6_TIMEOUT_MS	500
 #define AMLOGIC_HS400_TIMING 1
-#define MIN_CACHE_EN_TIMEOUT_MS 1600
 
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
@@ -524,7 +523,8 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			card->cid.year += 16;
 
 		/* check whether the eMMC card supports BKOPS */
-		if (ext_csd[EXT_CSD_BKOPS_SUPPORT] & 0x1) {
+		if (!mmc_card_broken_hpi(card) &&
+		    ext_csd[EXT_CSD_BKOPS_SUPPORT] & 0x1) {
 			card->ext_csd.bkops = 1;
 			card->ext_csd.man_bkops_en =
 					(ext_csd[EXT_CSD_BKOPS_EN] &
@@ -1184,7 +1184,7 @@ static int mmc_select_hs400(struct mmc_card *card)
 			pr_info("%s:use ds type0\n",
 				mmc_hostname(host));
 	/*3 -> type4 -> MMC_CAP_DRIVER_TYPED*/
-		} else if (ds & (1 << 2)) {
+		} else if (ds & (1 << 3)) {
 			raw_driver_strength &= ~(1 << 1);
 			pr_info("%s:use ds type4\n",
 				mmc_hostname(host));
@@ -1192,15 +1192,15 @@ static int mmc_select_hs400(struct mmc_card *card)
 	}
 	if (raw_driver_strength & (1 << 1)) {
 		val =
-			(0x4 << EXT_CSD_DRV_STR_SHIFT)
-			| EXT_CSD_TIMING_HS400;
-		pr_info("%s: support driver strength type 4\n",
-				mmc_hostname(host));
-	} else if (raw_driver_strength & (1 << 4)) {
-		val =
 			(0x1 << EXT_CSD_DRV_STR_SHIFT)
 			| EXT_CSD_TIMING_HS400;
 		pr_info("%s: support driver strength type 1\n",
+				mmc_hostname(host));
+	} else if (raw_driver_strength & (1 << 4)) {
+		val =
+			(0x4 << EXT_CSD_DRV_STR_SHIFT)
+			| EXT_CSD_TIMING_HS400;
+		pr_info("%s: support driver strength type 4\n",
 				mmc_hostname(host));
 	} else  {
 		val = EXT_CSD_TIMING_HS400;
@@ -1815,26 +1815,20 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		if (err) {
 			pr_warn("%s: Enabling HPI failed\n",
 				mmc_hostname(card->host));
-			card->ext_csd.hpi_en = 0;
 			err = 0;
-		} else {
+		} else
 			card->ext_csd.hpi_en = 1;
-		}
 	}
 
 	/*
-	 * If cache size is higher than 0, this indicates the existence of cache
-	 * and it can be turned on. Note that some eMMCs from Micron has been
-	 * reported to need ~800 ms timeout, while enabling the cache after
-	 * sudden power failure tests. Let's extend the timeout to a minimum of
-	 * DEFAULT_CACHE_EN_TIMEOUT_MS and do it for all cards.
+	 * If cache size is higher than 0, this indicates
+	 * the existence of cache and it can be turned on.
 	 */
-	if (card->ext_csd.cache_size > 0) {
-		unsigned int timeout_ms = MIN_CACHE_EN_TIMEOUT_MS;
-
-		timeout_ms = max(card->ext_csd.generic_cmd6_time, timeout_ms);
+	if (!mmc_card_broken_hpi(card) &&
+	    card->ext_csd.cache_size > 0) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-				EXT_CSD_CACHE_CTRL, 1, timeout_ms);
+				EXT_CSD_CACHE_CTRL, 1,
+				card->ext_csd.generic_cmd6_time);
 		if (err && err != -EBADMSG)
 			goto free_card;
 

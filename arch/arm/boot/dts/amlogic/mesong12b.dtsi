@@ -502,15 +502,6 @@
 		clocks = <&xtal>;
 	};
 
-	jtag {
-		compatible = "amlogic, jtag";
-		status = "okay";
-		select = "disable"; /* disable/apao/apee */
-		pinctrl-names="jtag_apao_pins", "jtag_apee_pins";
-		pinctrl-0=<&jtag_apao_pins>;
-		pinctrl-1=<&jtag_apee_pins>;
-	};
-
 	saradc:saradc {
 		compatible = "amlogic,meson-g12a-saradc";
 		status = "disabled";
@@ -555,14 +546,6 @@
 		clocks = <&clkc CLKID_TS_COMP>; /* CLKID_TS_COMP>;*/
 		clock-names = "ts_comp";
 		#thermal-sensor-cells = <1>;
-	};
-
-	ram-dump {
-		compatible = "amlogic, ram_dump";
-		status = "okay";
-		reg = <0xFF6345E0 4>;
-		reg-names = "PREG_STICKY_REG8";
-		store_device = "data";
 	};
 
 	soc {
@@ -811,15 +794,6 @@
 				pinctrl-names = "default";
 				pinctrl-0 = <&ao_b_uart_pins>;
 			};
-
-			irblaster: meson-irblaster@14c {
-				compatible = "amlogic, meson_irblaster";
-				reg = <0x14c 0x10>,
-					<0x40 0x4>;
-				#irblaster-cells = <2>;
-				interrupts = <GIC_SPI 198 IRQ_TYPE_EDGE_RISING>;
-				status = "disabled";
-			};
 		};/* end of aobus */
 
 		periphs: periphs@ff634400 {
@@ -882,29 +856,6 @@
 			};
 		};/* end of audiobus*/
 
-		aml_dma {
-			compatible = "amlogic,aml_txlx_dma";
-			reg = <0xff63e000 0x48>;
-			interrupts = <0 180 1>;
-
-			aml_aes {
-				compatible = "amlogic,aes_g12a_dma";
-				dev_name = "aml_aes_dma";
-				status = "okay";
-			};
-
-			aml_sha {
-				compatible = "amlogic,sha_dma";
-				dev_name = "aml_sha_dma";
-				status = "okay";
-			};
-
-			aml_tdes {
-				compatible = "amlogic,tdes_dma";
-				dev_name = "aml_tdes_dma";
-				status = "okay";
-			};
-		};
 	}; /* end of soc*/
 
 	remote:rc@0xff808040 {
@@ -1196,7 +1147,15 @@
 		interrupts = <0 147 4>;
 		interrupt-names = "galcore";
 		reg = <0xff100000 0x800
-		       0xff000000 0x400000>;
+			0xff000000 0x400000
+			0xff63c10c 0x4
+			0xff63c110 0x4
+			0xffd01088 0x4
+			0xff63c1c8 0x4
+			>;
+		reg-names = "NN_REG","NN_SRAM","NN_MEM0",
+			"NN_MEM1","NN_RESET","NN_CLK";
+		nn_efuse = <0xff63003c 0x20>;
 	};
 
 	aocec: aocec {
@@ -1448,6 +1407,15 @@
 		clocks = <&clkc CLKID_VPU_CLKC_MUX>;
 		clock-names = "vpu_clkc";
 	};
+	irblaster: meson-irblaster {
+		compatible = "amlogic, meson_irblaster";
+		reg = <0xff80014c 0x10>,
+			<0xff800040 0x4>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&irblaster_pins>;
+		interrupts = <0 198 1>;
+		status = "disabled";
+	};
 
 	sd_emmc_c: emmc@ffe07000 {
 		status = "disabled";
@@ -1626,11 +1594,20 @@
 					node_name = "cpufreq_cool1";
 					device_type = "cpufreq";
 				};
-				cpucore_cool_cluster {
+				cpucore_cool_cluster0 {
 					min_state = <1>;
 					dyn_coeff = <0>;
+					cluster_id = <0>;
 					gpu_pp = <2>;
-					node_name = "cpucore_cool";
+					node_name = "cpucore_cool0";
+					device_type = "cpucore";
+				};
+				cpucore_cool_cluster1 {
+					min_state = <0>;
+					dyn_coeff = <0>;
+					cluster_id = <1>;
+					gpu_pp = <2>;
+					node_name = "cpucore_cool1";
 					device_type = "cpucore";
 				};
 				gpufreq_cool {
@@ -1656,7 +1633,10 @@
 			cpufreq_cool1:cpufreq_cool1 {
 				#cooling-cells = <2>; /* min followed by max */
 			};
-			cpucore_cool:cpucore_cool {
+			cpucore_cool0:cpucore_cool0 {
+				#cooling-cells = <2>; /* min followed by max */
+			};
+			cpucore_cool1:cpucore_cool1 {
 				#cooling-cells = <2>; /* min followed by max */
 			};
 			gpufreq_cool0:gpufreq_cool0 {
@@ -1708,9 +1688,14 @@
 					cooling-device = <&cpufreq_cool1 0 9>;
 					contribution = <1024>;
 				};
-				cpucore_cooling_map {
+				cpucore_cooling_map0 {
 					trip = <&pcontrol>;
-					cooling-device = <&cpucore_cool 0 5>;
+					cooling-device = <&cpucore_cool0 0 1>;
+					contribution = <1024>;
+				};
+				cpucore_cooling_map1 {
+					trip = <&pcontrol>;
+					cooling-device = <&cpucore_cool1 0 4>;
 					contribution = <1024>;
 				};
 				gpufreq_cooling_map {
@@ -1907,6 +1892,7 @@
 		compatible = "arm, isp";
 		reg = <0xff140000 0x00040000>;
 		reg-names = "ISP";
+		isp-efuse = <0xff630038 0x4000>;
 		interrupts = <0 142 4>;
 		interrupt-names = "ISP";
 		temper-buf-size = <24>;
@@ -2083,16 +2069,6 @@
 		mux {
 			groups = "pwm_a_e2";
 			function = "pwm_a_gpioe";
-		};
-	};
-
-	jtag_apao_pins:jtag_apao_pin {
-		mux {
-			groups = "jtag_a_tdi",
-			"jtag_a_tdo",
-			"jtag_a_clk",
-			"jtag_a_tms";
-			function = "jtag_a";
 		};
 	};
 };
@@ -2600,16 +2576,6 @@
 		mux {
 			groups = "remote_out_z";
 			function = "remote_out";
-		};
-	};
-
-	jtag_apee_pins:jtag_apee_pin {
-		mux {
-			groups = "jtag_b_tdi",
-			"jtag_b_tdo",
-			"jtag_b_clk",
-			"jtag_b_tms";
-			function = "jtag_b";
 		};
 	};
 };

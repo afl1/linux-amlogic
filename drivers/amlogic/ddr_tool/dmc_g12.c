@@ -29,7 +29,6 @@
 #include <linux/irqreturn.h>
 #include <linux/module.h>
 #include <linux/mm.h>
-#include <linux/highmem.h>
 
 #include <linux/cpu.h>
 #include <linux/smp.h>
@@ -77,38 +76,31 @@ static size_t g12_dmc_dump_reg(char *buf)
 	return sz;
 }
 
-static void show_violation_mem(unsigned long addr)
-{
-	struct page *page;
-	unsigned long *p, *q;
-
-	if (!pfn_valid(__phys_to_pfn(addr)))
-		return;
-
-	page = phys_to_page(addr);
-	p = kmap_atomic(page);
-	if (!p)
-		return;
-
-	q = p + ((addr & (PAGE_SIZE - 1)) / sizeof(*p));
-	pr_info(DMC_TAG "[%08lx]:%016lx, f:%8lx, m:%p, a:%ps\n",
-		(unsigned long)q, *q, page->flags & 0xffffffff,
-		page->mapping,
-		(void *)get_page_trace(page));
-	kunmap_atomic(p);
-}
-
 static void check_violation(struct dmc_monitor *mon)
 {
 	int i, port, subport;
 	unsigned long addr, status;
+	struct page *page;
+	unsigned long *p;
 	char id_str[4];
-	char off1 = 21, off2 = 10;
+	char off1, off2;
 
-	if (mon->chip == MESON_CPU_MAJOR_ID_G12B) {
+	switch (mon->chip) {
+	case MESON_CPU_MAJOR_ID_G12B:
 		/* bit fix for G12B */
 		off1 = 24;
 		off2 = 13;
+		break;
+	case MESON_CPU_MAJOR_ID_SM1:
+	case MESON_CPU_MAJOR_ID_TL1:
+		/* bit fix for SM1/TL1 */
+		off1 = 22;
+		off2 = 11;
+		break;
+	default: /* G12A */
+		off1 = 21;
+		off2 = 10;
+		break;
 	}
 
 	for (i = 1; i < 4; i += 2) {
@@ -132,7 +124,14 @@ static void check_violation(struct dmc_monitor *mon)
 		pr_info(DMC_TAG", addr:%08lx, s:%08lx, ID:%s, sub:%s, c:%ld\n",
 			addr, status, to_ports(port),
 			to_sub_ports(port, subport, id_str), mon->same_page);
-		show_violation_mem(addr);
+		if (pfn_valid(__phys_to_pfn(addr))) {
+			page = phys_to_page(addr);
+			p = (page_address(page) + (addr & (PAGE_SIZE - 1)));
+			pr_info(DMC_TAG" [%08lx]:%016lx, f:%8lx, m:%p, a:%pf\n",
+				addr, *p, page->flags & 0xffffffff,
+				page->mapping,
+				(void *)get_page_trace(page));
+		}
 		if (!port) /* dump stack for CPU write */
 			dump_stack();
 

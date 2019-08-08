@@ -246,21 +246,8 @@ static unsigned long unwind_get_byte(struct unwind_ctrl_block *ctrl)
 }
 
 /* Before poping a register check whether it is feasible or not */
-#ifdef CONFIG_AMLOGIC_KASAN32
-/*
- * If enabled KASAN and unwind_frame is called under IRQ routine,
- * an value-less kasan report will trigger. Because IRQ is using
- * thread context and don't initialized shadow memory when irq_svc
- * saving irq context. Since it's hard to guess reserved memory for
- * shadow in stack by compiler, so we just tell compiler do not
- * sanitize for this function
- */
-int __no_sanitize_address unwind_pop_register(struct unwind_ctrl_block *ctrl,
-				unsigned long **vsp, unsigned int reg)
-#else
 static int unwind_pop_register(struct unwind_ctrl_block *ctrl,
 				unsigned long **vsp, unsigned int reg)
-#endif
 {
 	if (unlikely(ctrl->check_each_pop))
 		if (*vsp >= (unsigned long *)ctrl->sp_high)
@@ -557,7 +544,7 @@ void unwind_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 				sp_irq = (unsigned long)irq_stack[cpu];
 				addr = *((unsigned long *)(sp_irq +
 					THREAD_INFO_OFFSET - 8 -
-					sizeof(addr) - 12));
+					sizeof(addr)));
 				pt_regs = (struct pt_regs *)addr;
 				frame.fp = pt_regs->ARM_fp;
 				frame.sp = pt_regs->ARM_sp;

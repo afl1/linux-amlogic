@@ -900,7 +900,13 @@ static void ffs_user_copy_worker(struct work_struct *work)
 
 	if (io_data->read)
 		kfree(io_data->to_free);
-#ifndef CONFIG_AMLOGIC_USB
+
+#ifdef CONFIG_AMLOGIC_USB
+	if (io_data->aio) {
+		if (buffer)
+			release_ffs_buffer(io_data->ffs, buffer);
+	}
+#else
 	kfree(io_data->buf);
 #endif
 	kfree(io_data);
@@ -1006,6 +1012,7 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 #ifdef CONFIG_AMLOGIC_USB
 	struct ffs_ep *ep = epfile->ep;
 	struct ffs_data_buffer *buffer = NULL;
+	int data_aio_flag = -1;
 #else
 	struct ffs_ep *ep;
 #endif
@@ -1107,6 +1114,7 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 		 *reboot adb disconnect,so buffer aways used assign_ffs_buffer.
 		 */
 			buffer = assign_ffs_buffer(epfile->ffs);
+			data_aio_flag = 1;
 			if (unlikely(!buffer)) {
 				ret = -ENOMEM;
 				spin_unlock_irq(&epfile->ffs->eps_lock);
@@ -1153,6 +1161,9 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 		DECLARE_COMPLETION_ONSTACK(done);
 #endif
 		bool interrupted = false;
+#ifdef CONFIG_AMLOGIC_USB
+		data_aio_flag = 1;
+#endif
 		req = ep->req;
 		req->buf      = data;
 		req->length   = data_len;
@@ -1174,7 +1185,6 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 			 * condition with req->complete callback.
 			 */
 			usb_ep_dequeue(ep->ep, req);
-			wait_for_completion(&done);
 			interrupted = ep->status < 0;
 		}
 
@@ -1190,6 +1200,9 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 	} else if (!(req = usb_ep_alloc_request(ep->ep, GFP_ATOMIC))) {
 		ret = -ENOMEM;
 	} else {
+#ifdef CONFIG_AMLOGIC_USB
+		data_aio_flag = -1;
+#endif
 		req->buf      = data;
 		req->length   = data_len;
 
@@ -1221,8 +1234,10 @@ error_mutex:
 	mutex_unlock(&epfile->mutex);
 error:
 #ifdef CONFIG_AMLOGIC_USB
-	if (buffer)
-		release_ffs_buffer(epfile->ffs, buffer);
+	if (data_aio_flag > 0) {
+		if (buffer)
+			release_ffs_buffer(epfile->ffs, buffer);
+	}
 #else
 	kfree(data);
 #endif
@@ -3435,7 +3450,7 @@ static int ffs_func_setup(struct usb_function *f,
 	__ffs_event_add(ffs, FUNCTIONFS_SETUP);
 	spin_unlock_irqrestore(&ffs->ev.waitq.lock, flags);
 
-	return creq->wLength == 0 ? USB_GADGET_DELAYED_STATUS : 0;
+	return USB_GADGET_DELAYED_STATUS;
 }
 
 static bool ffs_func_req_match(struct usb_function *f,

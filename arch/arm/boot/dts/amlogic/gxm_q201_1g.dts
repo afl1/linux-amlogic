@@ -55,7 +55,7 @@
 			reg = <0x07400000 0x00100000>;
 			record-size = <0x8000>;
 			console-size = <0x8000>;
-			ftrace-size = <0x20000>;
+			ftrace-size = <0x40000>;
 		};
 
 		secmon_reserved:linux,secmon {
@@ -76,7 +76,7 @@
 			reusable;
 			size = <0x800000>;
 			alignment = <0x400000>;
-			alloc-ranges = <0x7f800000 0x800000>;
+			alloc-ranges = <0x3f800000 0x800000>;
 		};
 		//don't put other dts in front of logo_reserved
 
@@ -639,10 +639,6 @@
 		compatible = "amlogic, amlogic-new-usb3";
 		portnum = <0>;
 		reg = <0xd0078080 0x20>;
-		interrupts = <0 16 4>;
-		otg = <1>;
-		gpio-vbus-power = "GPIOAO_5";
-		gpios = <&gpio_ao GPIOAO_5 GPIO_ACTIVE_HIGH>;
 	};
 
 	dwc2_a {
@@ -661,7 +657,7 @@
 		port-id-mode = <0>; /** 0: hardware, 1: sw_host, 2: sw_slave*/
 		usb-fifo = <728>;
 		cpu-type = "gxl";
-		controller-type = <3>; /** 0: normal,1:host,2:device,3:otg*/
+		controller-type = <1>; /** 0: normal,1:host,2:device,3:otg*/
 		phy-reg = <0xd0078000>;
 		phy-reg-size = <0xa0>;
 		clocks = <&clkc CLKID_USB_GENERAL
@@ -738,7 +734,7 @@
 		status = "okay";
 		vendor_id = <0x000000>;
 		cec_osd_string = "MBox"; /* Max Chars: 14    */
-		cec_version = <6>; /* 5: 1.4, 6: 2.0 */
+		cec_version = <5>; /* 5: 1.4, 6: 2.0 */
 		port_num = <1>;
 		arc_port_mask = <0x0>;
 		interrupts = <0 199 1>;
@@ -759,6 +755,7 @@
 
 	meson-fb {
 		compatible = "amlogic, meson-gxm";
+		memory-region = <&logo_reserved>;
 		dev_name = "meson-fb";
 		status = "okay";
 		interrupts = <0 3 1
@@ -771,7 +768,7 @@
 		/** 0:VPU free scale 1:OSD free scale 2:OSD super scale */
 		display_size_default = <1920 1080 1920 3240 32>;
 		/*1920*1080*4*3 = 0x17BB000*/
-		logo_addr = "0x7f800000";
+		logo_addr = "0x3f800000";
 	};
 	ge2d {
 		compatible = "amlogic, ge2d-gxm";

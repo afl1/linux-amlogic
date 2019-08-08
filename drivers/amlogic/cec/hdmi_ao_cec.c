@@ -56,11 +56,7 @@
 #include <linux/amlogic/cpu_version.h>
 #include <linux/amlogic/jtag.h>
 #include <linux/amlogic/scpi_protocol.h>
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-static struct early_suspend aocec_suspend_handler;
-#endif
+#include <linux/amlogic/pm.h>
 #include "hdmi_ao_cec.h"
 
 
@@ -75,6 +71,10 @@ static struct early_suspend aocec_suspend_handler;
 #define HR_DELAY(n)		(ktime_set(0, n * 1000 * 1000))
 #define MAX_INT    0x7ffffff
 
+#ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
+static struct early_suspend aocec_suspend_handler;
+#endif
+
 struct cec_platform_data_s {
 	/*unsigned int chip_id;*/
 	unsigned char line_reg;/*cec gpio_i reg:0  ao;1 periph*/
@@ -82,7 +82,6 @@ struct cec_platform_data_s {
 	bool ee_to_ao;/*ee cec hw module mv to ao;ao cec delete*/
 	bool ceca_sts_reg;/*add new internal status register*/
 	enum cecbver cecb_ver;/* detail discription ref enum cecbver */
-	enum cecaver ceca_ver;
 };
 
 
@@ -147,10 +146,8 @@ static int phy_addr_test;
 enum {
 	HDMI_OPTION_WAKEUP = 1,
 	HDMI_OPTION_ENABLE_CEC = 2,
-	/*frame work pw on, 1:pw on 0:suspend*/
 	HDMI_OPTION_SYSTEM_CEC_CONTROL = 3,
 	HDMI_OPTION_SET_LANG = 5,
-	/*have cec framework*/
 	HDMI_OPTION_SERVICE_FLAG = 16,
 };
 
@@ -163,7 +160,7 @@ static struct hrtimer start_bit_check;
 static unsigned char rx_msg[MAX_MSG];
 static unsigned char rx_len;
 static unsigned int  new_msg;
-/*static bool wake_ok = 1;*/
+static bool wake_ok = 1;
 static bool ee_cec;
 static bool pin_status;
 static unsigned int cec_msg_dbg_en;
@@ -484,49 +481,6 @@ static inline void cecrx_clear_irq(unsigned int flags)
 		writel(flags, cec_dev->cec_reg + AO_CECB_INTR_CLR);
 }
 
-/* max length = 14+1 */
-#define OSD_NAME_DEV	1
-const uint8_t dev_osd_name[1][16] = {
-	{1, 0x43, 0x68, 0x72, 0x6f, 0x6d, 0x65, 0x63, 0x61, 0x73, 0x74},
-};
-
-const uint8_t dev_vendor_id[1][3] = {
-	{0, 0, 0},
-};
-
-static bool cec_message_op(unsigned char *msg, unsigned char len)
-{
-	int i, j;
-
-	if (((msg[0] & 0xf0) >> 4) == cec_dev->cec_info.log_addr) {
-		CEC_ERR("bad iniator with self:%s", msg_log_buf);
-		return false;
-	}
-	switch (msg[1]) {
-	case 0x47:
-		/* OSD name */
-		if (len > 16)
-			break;
-		for (j = 0; j < OSD_NAME_DEV; j++) {
-			for (i = 2; i < len; i++) {
-				if (msg[i] != dev_osd_name[j][i-1])
-					break;
-			}
-			if (i == len) {
-				cec_set_dev_info(dev_osd_name[j][0]);
-				CEC_INFO("specific dev:%d", dev_osd_name[j][0]);
-			}
-		}
-		break;
-	case 0x87:
-		/* verdor ID */
-		break;
-	default:
-		break;
-	}
-	return true;
-}
-
 static int cecb_pick_msg(unsigned char *msg, unsigned char *out_len)
 {
 	int i, size;
@@ -543,10 +497,11 @@ static int cecb_pick_msg(unsigned char *msg, unsigned char *out_len)
 	/* clr CEC lock bit */
 	hdmirx_cec_write(DWC_CEC_LOCK, 0);
 	CEC_INFO("%s", msg_log_buf);
-	if (cec_message_op(msg, len))
-		*out_len = len;
-	else
+	if (((msg[0] & 0xf0) >> 4) == cec_dev->cec_info.log_addr) {
 		*out_len = 0;
+		CEC_ERR("bad iniator with self:%s", msg_log_buf);
+	} else
+		*out_len = len;
 	pin_status = 1;
 	return 0;
 }
@@ -563,8 +518,6 @@ void cecb_irq_handle(void)
 	/* clear irq */
 	if (intr_cec != 0)
 		cecrx_clear_irq(intr_cec);
-	else
-		CEC_INFO_L(L_1, "err cec intsts:0\n");
 
 	if (cec_dev->plat_data->ee_to_ao)
 		shift = 16;
@@ -1182,13 +1135,6 @@ void cec_enable_arc_pin(bool enable)
 {
 	unsigned int data;
 
-	if (is_meson_sm1_cpu() ||
-			cpu_after_eq(MESON_CPU_MAJOR_ID_TM2)) {
-		/*sm1 and tm2 later, audio module handle this*/
-
-		return;
-	}
-
 	if (cec_dev->plat_data->cecb_ver >= CECB_VER_2) {
 		data = rd_reg_hhi(HHI_HDMIRX_ARC_CNTL);
 		/* enable bit 1:1 bit 0: 0*/
@@ -1753,14 +1699,13 @@ void cec_keep_reset(void)
  */
 static void cec_pre_init(void)
 {
-	#if 0
 	unsigned int reg = readl(cec_dev->cec_reg + AO_RTI_STATUS_REG1);
 
 	reg &= 0xfffff;
 	if ((reg & 0xffff) == 0xffff)
 		wake_ok = 0;
 	pr_info("cec: wake up flag:%x\n", reg);
-	#endif
+
 	if (cec_dev->cec_num > 1) {
 		ao_ceca_init();
 		ao_cecb_init();
@@ -1987,13 +1932,12 @@ static void cec_rx_process(void)
 	opcode = msg[1];
 	switch (opcode) {
 	case CEC_OC_ACTIVE_SOURCE:
-		/*if (wake_ok == 0) */
-		{
+		if (wake_ok == 0) {
 			int phy_addr = msg[2] << 8 | msg[3];
 
 			if (phy_addr == 0xffff)
 				break;
-			/*wake_ok = 1;*/
+			wake_ok = 1;
 			phy_addr |= (initiator << 16);
 			writel(phy_addr, cec_dev->cec_reg + AO_RTI_STATUS_REG1);
 			CEC_INFO("found wake up source:%x", phy_addr);
@@ -2050,9 +1994,9 @@ static void cec_rx_process(void)
 		if (cec_dev->cec_suspend == CEC_DEEP_SUSPEND)
 			cec_report_power_status(initiator, POWER_STANDBY);
 		else if (cec_dev->cec_suspend == CEC_EARLY_SUSPEND)
-			cec_report_power_status(initiator, TRANS_ON_TO_STANDBY);
+			cec_report_power_status(initiator, POWER_STANDBY);
 		else if (cec_dev->cec_suspend == CEC_POWER_RESUME)
-			cec_report_power_status(initiator, TRANS_STANDBY_TO_ON);
+			cec_report_power_status(initiator, POWER_ON);
 		else
 			cec_report_power_status(initiator, POWER_ON);
 		break;
@@ -2083,8 +2027,9 @@ static void cec_rx_process(void)
 		break;
 
 	default:
-		CEC_ERR("cec unsupported cmd:0x%x, halflg:0x%x\n",
-			opcode, cec_dev->hal_flag);
+		CEC_ERR("unsupported command:%x\n", opcode);
+		CEC_ERR("wake_ok=%d,hal_flag=0x%x\n",
+			wake_ok, cec_dev->hal_flag);
 		break;
 	}
 	new_msg = 0;
@@ -2093,12 +2038,10 @@ static void cec_rx_process(void)
 static bool cec_service_suspended(void)
 {
 	/* service is not enabled */
-	/*if (!(cec_dev->hal_flag & (1 << HDMI_OPTION_SERVICE_FLAG)))*/
-	/*	return false;*/
-
+	if (!(cec_dev->hal_flag & (1 << HDMI_OPTION_SERVICE_FLAG)))
+		return false;
 	if (!(cec_dev->hal_flag & (1 << HDMI_OPTION_SYSTEM_CEC_CONTROL)))
 		return true;
-
 	return false;
 }
 
@@ -2632,8 +2575,6 @@ static ssize_t hdmitx_cec_read(struct file *f, char __user *buf,
 {
 	int ret;
 
-	if ((cec_dev->hal_flag & (1 << HDMI_OPTION_SYSTEM_CEC_CONTROL)))
-		rx_len = 0;
 	/*CEC_ERR("read msg start\n");*/
 	ret = wait_for_completion_timeout(&cec_dev->rx_ok, CEC_FRAME_DELAY);
 	if (ret <= 0) {
@@ -3086,7 +3027,7 @@ static const struct file_operations hdmitx_cec_fops = {
 };
 
 /************************ cec high level code *****************************/
-#ifdef CONFIG_HAS_EARLYSUSPEND
+#ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 static void aocec_early_suspend(struct early_suspend *h)
 {
 	cec_dev->cec_suspend = CEC_EARLY_SUSPEND;
@@ -3123,7 +3064,6 @@ static const struct cec_platform_data_s cec_g12a_data = {
 	.line_bit = 3,
 	.ee_to_ao = 1,
 	.ceca_sts_reg = 0,
-	.ceca_ver = CECA_VER_0,
 	.cecb_ver = CECB_VER_1,
 };
 
@@ -3132,7 +3072,6 @@ static const struct cec_platform_data_s cec_txl_data = {
 	.line_bit = 7,
 	.ee_to_ao = 0,
 	.ceca_sts_reg = 0,
-	.ceca_ver = CECA_VER_0,
 	.cecb_ver = CECB_VER_0,
 };
 
@@ -3141,7 +3080,6 @@ static const struct cec_platform_data_s cec_tl1_data = {
 	.line_bit = 10,
 	.ee_to_ao = 1,
 	.ceca_sts_reg = 1,
-	.ceca_ver = CECA_VER_0,
 	.cecb_ver = CECB_VER_2,
 };
 
@@ -3150,16 +3088,6 @@ static const struct cec_platform_data_s cec_sm1_data = {
 	.line_bit = 3,
 	.ee_to_ao = 1,
 	.ceca_sts_reg = 1,
-	.ceca_ver = CECA_VER_1,
-	.cecb_ver = CECB_VER_2,
-};
-
-static const struct cec_platform_data_s cec_tm2_data = {
-	.line_reg = 0,
-	.line_bit = 3,
-	.ee_to_ao = 1,
-	.ceca_sts_reg = 1,
-	.ceca_ver = CECA_VER_1,
 	.cecb_ver = CECB_VER_2,
 };
 
@@ -3187,10 +3115,6 @@ static const struct of_device_id aml_cec_dt_match[] = {
 	{
 		.compatible = "amlogic, aocec-sm1",
 		.data = &cec_sm1_data,
-	},
-	{
-		.compatible = "amlogic, aocec-tm2",
-		.data = &cec_tm2_data,
 	},
 	{}
 };
@@ -3521,13 +3445,14 @@ static int aml_cec_probe(struct platform_device *pdev)
 		goto tag_cec_msg_alloc_err;
 	}
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
+#ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 	aocec_suspend_handler.level   = EARLY_SUSPEND_LEVEL_BLANK_SCREEN - 20;
 	aocec_suspend_handler.suspend = aocec_early_suspend;
 	aocec_suspend_handler.resume  = aocec_late_resume;
 	aocec_suspend_handler.param   = cec_dev;
 	register_early_suspend(&aocec_suspend_handler);
 #endif
+
 	hrtimer_init(&start_bit_check, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	start_bit_check.function = cec_line_check;
 	cec_dev->cec_thread = create_workqueue("cec_work");

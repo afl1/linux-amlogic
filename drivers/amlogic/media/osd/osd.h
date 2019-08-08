@@ -160,6 +160,12 @@ enum color_index_e {
 #define BYPASS_DIN        (1 << 7)
 #define OSD_BACKUP_COUNT 24
 
+#define LOGO_DEV_OSD0      0x0
+#define LOGO_DEV_OSD1      0x1
+#define LOGO_DEV_VIU2_OSD0 0x3
+#define LOGO_DEBUG         0x1001
+#define LOGO_LOADED        0x1002
+
 enum osd_index_e {
 	OSD1 = 0,
 	OSD2,
@@ -613,8 +619,10 @@ struct hw_osd_blending_s {
 	bool osd1_freescale_disable;
 	u32 vinfo_width;
 	u32 vinfo_height;
-	u32 screen_ratio_w;
-	u32 screen_ratio_h;
+	u32 screen_ratio_w_num;
+	u32 screen_ratio_w_den;
+	u32 screen_ratio_h_num;
+	u32 screen_ratio_h_den;
 	struct dispdata_s dst_data;
 	struct layer_blend_reg_s blend_reg;
 	struct layer_blend_s layer_blend;

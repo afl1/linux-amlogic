@@ -130,6 +130,28 @@ static int secmon_probe(struct platform_device *pdev)
 	return ret;
 }
 
+void __init secmon_clear_cma_mmu(void)
+{
+	struct device_node *np;
+	unsigned int clear[2] = {};
+
+	np = of_find_node_by_name(NULL, "secmon");
+	if (!np)
+		return;
+
+	if (of_property_read_u32_array(np, "clear_range", clear, 2))
+		pr_info("can't fine clear_range\n");
+	else
+		pr_info("clear_range:%x %x\n", clear[0], clear[1]);
+
+	if (clear[0]) {
+		struct page *page = phys_to_page(clear[0]);
+		int cnt = clear[1] / PAGE_SIZE;
+
+		cma_mmu_op(page, cnt, 0);
+	}
+}
+
 static const struct of_device_id secmon_dt_match[] = {
 	{ .compatible = "amlogic, secmon" },
 	{ /* sentinel */ },

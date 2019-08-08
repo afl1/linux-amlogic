@@ -53,9 +53,6 @@
 #ifdef CONFIG_INSTABOOT
 #include <linux/amlogic/instaboot/instaboot.h>
 #endif
-#ifdef CONFIG_AMLOGIC_VPU
-#include <linux/amlogic/media/vpu/vpu.h>
-#endif
 /* Local Headers */
 #include "osd.h"
 #include "osd_fb.h"
@@ -385,90 +382,7 @@ struct ion_handle *fb_ion_handle[OSD_COUNT][OSD_MAX_BUF_NUM];
 };
 #endif
 
-#ifdef CONFIG_AMLOGIC_MEDIA_FB_OSD2_CURSOR
 static int osd_cursor(struct fb_info *fbi, struct fb_cursor *var);
-#endif
-
-#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
-extern int  soft_cursor(struct fb_info *info, struct fb_cursor *cursor);
-
-static int overscan_ratio = 100;	/* at % */
-
-static int osd_set_fb_var(int index, const struct vinfo_s *vinfo)
-{
-	if ((vinfo->width < 0) || (vinfo->height < 0)) {
-		pr_err("invalid vinfo\n");
-		return 1;
-	}
-
-	fb_def_var[index].xres = vinfo->width;
-	fb_def_var[index].yres = vinfo->height;
-	fb_def_var[index].xres_virtual = vinfo->width;
-	fb_def_var[index].yres_virtual = vinfo->height * 2;
-	fb_def_var[index].bits_per_pixel = 32;
-
-	return 0;
-}
-
-static void overscan_window(const struct vinfo_s *vinfo, int percent,
-		int *left, int *top, int *width, int *height)
-{
-	const int step = 2;
-
-	*left = (100 - percent) * vinfo->width / (100 * 2 * step);
-	*top = (100 - percent) * vinfo->height / (100 * 2 * step);
-	*width = (vinfo->width - *left) - *left - 1;
-	*height = (vinfo->height - *top) - *top - 1;
-}
-
-static void osd_set_fb_parameters(int index, const struct vinfo_s *vinfo)
-{
-	int left, top, width, height;
-
-	osd_set_free_scale_enable_hw(index, 0);
-	osd_set_free_scale_mode_hw(index, 1);
-	osd_set_free_scale_axis_hw(index, 0, 0,
-		(vinfo->width - 1), (vinfo->height - 1));
-	if (overscan_ratio == 100) {
-		osd_set_window_axis_hw(index, 0, 0,
-			(vinfo->width - 1), (vinfo->height - 1));
-	} else {
-		/* OVERSCAN */
-		overscan_window(vinfo, overscan_ratio,
-			&left, &top, &width, &height);
-		osd_set_window_axis_hw(index, left, top, width, height);
-		osd_set_free_scale_enable_hw(index, 0x10001);
-	}
-
-	osd_enable_hw(index, 1);
-}
-
-static int __init overscan_setup(char *str)
-{
-	int ratio;
-	int ret;
-
-	if (str == NULL)
-		return -EINVAL;
-
-	ret = kstrtoint(str, 0, &ratio);
-
-	if (ret != 0)
-		ratio = 100;
-	else
-		if (ratio > 100)
-			ratio = 100;
-		else
-			if (ratio < 80)
-				ratio = 80;
-
-	overscan_ratio = ratio;
-
-	return 0;
-}
-
-__setup("overscan=", overscan_setup);
-#endif /* CONFIG_ARCH_MESON64_ODROID_COMMON */
 
 phys_addr_t get_fb_rmem_paddr(int index)
 {
@@ -746,7 +660,7 @@ static int osd_set_par(struct fb_info *info)
 
 	output_index = get_output_device_id(fbdev->fb_index);
 
-	if (fbdev->fb_index <= OSD3) {
+	if (fbdev->fb_index < osd_hw.osd_meson_dev.viu1_osd_count) {
 		vinfo = get_current_vinfo();
 		if (!vinfo) {
 			osd_log_err("current vinfo NULL\n");
@@ -852,19 +766,12 @@ static int osd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 		ret = copy_from_user(&sync_request, argp,
 				sizeof(struct fb_sync_request_s));
 		break;
-	// Only wait for vsync when not HW decoding.
 	case FBIO_WAITFORVSYNC:
-		if (get_vpu_mem_pd_vmod(VPU_VIU_VD1))
-			vsync_timestamp = (s32)osd_wait_vsync_event();
-		else
-			vsync_timestamp = 0;
+		vsync_timestamp = (s32)osd_wait_vsync_event();
 		ret = copy_to_user(argp, &vsync_timestamp, sizeof(s32));
 		break;
 	case FBIO_WAITFORVSYNC_64:
-		if (get_vpu_mem_pd_vmod(VPU_VIU_VD1))
-			vsync_timestamp_64 = osd_wait_vsync_event();
-		else
-			vsync_timestamp_64 = 0;
+		vsync_timestamp_64 = osd_wait_vsync_event();
 		ret = copy_to_user(argp, &vsync_timestamp_64, sizeof(s64));
 		break;
 	case FBIOGET_OSD_SCALE_AXIS:
@@ -1559,15 +1466,16 @@ static int osd_open(struct fb_info *info, int arg)
 
 	fb_index = fbdev->fb_index;
 	if ((osd_meson_dev.has_viu2)
-		&& (fb_index == OSD4)) {
+		&& (fb_index == osd_meson_dev.viu2_index)) {
 		int vpu_clkc_rate;
-
-		/* select mux0, if select mux1, mux0 must be set */
-		clk_prepare_enable(osd_meson_dev.vpu_clkc);
-		clk_set_rate(osd_meson_dev.vpu_clkc, CUR_VPU_CLKC_CLK);
-		vpu_clkc_rate = clk_get_rate(osd_meson_dev.vpu_clkc);
-		osd_log_info("vpu clkc clock is %d MHZ\n",
-			vpu_clkc_rate/1000000);
+		if (osd_get_logo_index() != LOGO_DEV_VIU2_OSD0) {
+			/* select mux0, if select mux1, mux0 must be set */
+			clk_prepare_enable(osd_meson_dev.vpu_clkc);
+			clk_set_rate(osd_meson_dev.vpu_clkc, CUR_VPU_CLKC_CLK);
+			vpu_clkc_rate = clk_get_rate(osd_meson_dev.vpu_clkc);
+			osd_log_info("vpu clkc clock is %d MHZ\n",
+				vpu_clkc_rate/1000000);
+		}
 		osd_init_viu2();
 	}
 	if (osd_meson_dev.osd_count <= fb_index)
@@ -1932,42 +1840,11 @@ done:
 	return err;
 }
 
-static bool monitor_onoff_action;
-
 int osd_blank(int blank_mode, struct fb_info *info)
 {
 	osd_enable_hw(info->node, (blank_mode != 0) ? 0 : 1);
-
-	if (!monitor_onoff_action)
-		return 0;
-
-	switch (blank_mode) {
-	case FB_BLANK_UNBLANK:
-		control_hdmiphy(true);
-		break;
-	case FB_BLANK_POWERDOWN:
-		control_hdmiphy(false);
-		break;
-	case FB_BLANK_NORMAL:
-	case FB_BLANK_HSYNC_SUSPEND:
-	case FB_BLANK_VSYNC_SUSPEND:
-	default:
-		break;
-	}
-
 	return 0;
 }
-
-static int __init osd_setup_monitor_onoff(char *str)
-{
-	if (!strcmp(str, "true") || !strcmp(str, "1"))
-		monitor_onoff_action = true;
-	else
-		monitor_onoff_action = false;
-
-	return 0;
-}
-__setup("monitor_onoff=", osd_setup_monitor_onoff);
 
 static int osd_pan_display(struct fb_var_screeninfo *var,
 			   struct fb_info *fbi)
@@ -1978,7 +1855,6 @@ static int osd_pan_display(struct fb_var_screeninfo *var,
 	return 0;
 }
 
-#ifdef CONFIG_AMLOGIC_MEDIA_FB_OSD2_CURSOR
 static int osd_cursor(struct fb_info *fbi, struct fb_cursor *var)
 {
 	s16 startx = 0, starty = 0;
@@ -2001,7 +1877,6 @@ static int osd_cursor(struct fb_info *fbi, struct fb_cursor *var)
 
 	return 0;
 }
-#endif
 
 static int osd_sync(struct fb_info *info)
 {
@@ -2026,10 +1901,7 @@ static struct fb_ops osd_ops = {
 #if defined(CONFIG_FB_SOFT_CURSOR)
 	.fb_cursor      = soft_cursor,
 #endif
-#ifdef CONFIG_AMLOGIC_MEDIA_FB_OSD2_CURSOR
 	.fb_cursor      = osd_cursor,
-#endif
-#endif
 	.fb_ioctl       = osd_ioctl,
 #ifdef CONFIG_COMPAT
 	.fb_compat_ioctl = osd_compat_ioctl,
@@ -2201,6 +2073,7 @@ int osd_notify_callback_viu2(struct notifier_block *block, unsigned long cmd,
 	i = osd_meson_dev.viu2_index;
 	switch (cmd) {
 	case  VOUT_EVENT_MODE_CHANGE:
+		set_viu2_format(vinfo->viu_color_fmt);
 		fb_dev = gp_fbdev_list[i];
 		set_default_display_axis(&fb_dev->fb_info->var,
 			&fb_dev->osd_ctl, vinfo);
@@ -3440,6 +3313,63 @@ static ssize_t store_osd_line_n_rdma(
 	return count;
 }
 
+static ssize_t show_osd_hold_line(
+	struct device *device, struct device_attribute *attr,
+	char *buf)
+{
+	struct fb_info *fb_info = dev_get_drvdata(device);
+	int hold_line;
+
+	hold_line = osd_get_hold_line(fb_info->node);
+
+	return snprintf(buf, PAGE_SIZE, "0x%x\n", hold_line);
+}
+
+static ssize_t store_osd_hold_line(
+	struct device *device, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct fb_info *fb_info = dev_get_drvdata(device);
+	int hold_line;
+	int ret = 0;
+
+	ret = kstrtoint(buf, 0, &hold_line);
+	if (ret < 0)
+		return -EINVAL;
+
+	osd_set_hold_line(fb_info->node, hold_line);
+
+	return count;
+}
+
+static ssize_t show_osd_blend_bypass(
+	struct device *device, struct device_attribute *attr,
+	char *buf)
+{
+	int  blend_bypass;
+
+	blend_bypass = osd_get_blend_bypass();
+
+	return snprintf(buf, PAGE_SIZE, "0x%x\n", blend_bypass);
+}
+
+static ssize_t store_osd_blend_bypass(
+	struct device *device, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct fb_info *fb_info = dev_get_drvdata(device);
+	int blend_bypass;
+	int ret = 0;
+
+	ret = kstrtoint(buf, 0, &blend_bypass);
+	if (ret < 0)
+		return -EINVAL;
+
+	osd_set_blend_bypass(fb_info->node, blend_bypass);
+	return count;
+}
+
+
 static inline  int str2lower(char *str)
 {
 	while (*str != '\0') {
@@ -3652,6 +3582,10 @@ static struct device_attribute osd_attrs[] = {
 			show_osd_status, NULL),
 	__ATTR(osd_line_n_rdma, 0644,
 			show_osd_line_n_rdma, store_osd_line_n_rdma),
+	__ATTR(osd_hold_line, 0644,
+			show_osd_hold_line, store_osd_hold_line),
+	__ATTR(osd_blend_bypass, 0644,
+			show_osd_blend_bypass, store_osd_blend_bypass),
 };
 
 static struct device_attribute osd_attrs_viu2[] = {
@@ -4237,28 +4171,24 @@ static int osd_probe(struct platform_device *pdev)
 
 	}
 #endif
+
 	/* get meson-fb resource from dt */
 	prop = of_get_property(pdev->dev.of_node, "scale_mode", NULL);
-	if (prop) {
+	if (prop)
 		prop_idx = of_read_ulong(prop, 1);
-		/* Todo: only osd0 */
-		osd_set_free_scale_mode_hw(DEV_OSD0, prop_idx);
-	}
-
+	/* Todo: only osd0 */
+	osd_set_free_scale_mode_hw(DEV_OSD0, prop_idx);
 	prop = of_get_property(pdev->dev.of_node, "4k2k_fb", NULL);
-	if (prop) {
+	if (prop)
 		prop_idx = of_read_ulong(prop, 1);
-		osd_set_4k2k_fb_mode_hw(prop_idx);
-	}
-
+	osd_set_4k2k_fb_mode_hw(prop_idx);
 	/* get default display mode from dt */
-	ret = of_property_read_string(pdev->dev.of_node, "display_mode_default", &str);
-
+	ret = of_property_read_string(pdev->dev.of_node,
+		"display_mode_default", &str);
 	prop = of_get_property(pdev->dev.of_node, "pxp_mode", NULL);
-	if (prop) {
+	if (prop)
 		prop_idx = of_read_ulong(prop, 1);
-		osd_set_pxp_mode(prop_idx);
-	}
+	osd_set_pxp_mode(prop_idx);
 
 	prop = of_get_property(pdev->dev.of_node, "ddr_urgent", NULL);
 	if (prop) {
@@ -4266,11 +4196,9 @@ static int osd_probe(struct platform_device *pdev)
 		osd_set_urgent(0, (prop_idx != 0) ? 1 : 0);
 		osd_set_urgent(1, (prop_idx != 0) ? 1 : 0);
 	}
-
 	prop = of_get_property(pdev->dev.of_node, "mem_alloc", NULL);
-	if (prop) {
+	if (prop)
 		b_alloc_mem = of_read_ulong(prop, 1);
-	}
 
 	vinfo = get_current_vinfo();
 	for (index = 0; index < osd_meson_dev.osd_count; index++) {
@@ -4606,7 +4534,7 @@ static void __exit osd_exit_module(void)
 	platform_driver_unregister(&osd_driver);
 }
 
-module_init(osd_init_module);
+subsys_initcall(osd_init_module);
 module_exit(osd_exit_module);
 
 MODULE_AUTHOR("Platform-BJ <platform.bj@amlogic.com>");

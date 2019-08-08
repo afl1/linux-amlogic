@@ -33,20 +33,19 @@
 //#include "hdmi_rx_pktinfo.h"
 #include "hdmi_rx_edid.h"
 
-
-#define RX_VER0 "ver.2018-11-8"
+#define RX_VER0 "ver.2019-01-22"
 /*
  *
  *
  *
  *
  */
-#define RX_VER1 "ver.2018/10/22"
+#define RX_VER1 "ver.2018/12/24"
 /*
  *
  *
  */
-#define RX_VER2 "ver.2018/11/14"
+#define RX_VER2 "ver.2018/10/30"
 
 /*print type*/
 #define	LOG_EN		0x01
@@ -201,6 +200,13 @@ enum map_addr_module_e {
 	MAP_ADDR_MODULE_NUM
 };
 
+enum rx_cn_type_e {
+	CN_GRAPHICS,
+	CN_PHOTO,
+	CN_CINEMA,
+	CN_GAME,
+};
+
 /**
  * @short HDMI RX controller video parameters
  *
@@ -245,6 +251,7 @@ struct rx_video_info {
 	enum hdmi_vic_e sw_vic;
 	uint8_t sw_dvi;
 	unsigned int it_content;
+	enum rx_cn_type_e cn_type;
 	/** AVI Q1-0, RGB quantization range */
 	unsigned int rgb_quant_range;
 	/** AVI Q1-0, YUV quantization range */
@@ -313,6 +320,7 @@ struct vsi_info_s {
 	bool backlt_md_bit;
 	unsigned int dolby_timeout;
 	unsigned int eff_tmax_pq;
+	bool allm_mode;
 };
 
 #define CHANNEL_STATUS_SIZE   24

@@ -40,8 +40,7 @@
 /* v05: add txl support */
 /* v20180925: add tl1 support */
 /* v20190314: add sm1 support */
-/* v20190329: add tm2 support */
-#define VPU_VERION        "v20190329"
+#define VPU_VERION        "v20190314"
 
 int vpu_debug_print_flag;
 static spinlock_t vpu_mem_lock;
@@ -1257,7 +1256,6 @@ static struct vpu_data_s vpu_data_gxb = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_gx,
 };
@@ -1284,7 +1282,6 @@ static struct vpu_data_s vpu_data_gxtvbb = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_gx,
 };
@@ -1311,7 +1308,6 @@ static struct vpu_data_s vpu_data_gxl = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_gx,
 };
@@ -1339,7 +1335,6 @@ static struct vpu_data_s vpu_data_gxm = {
 	.module_init_table_cnt =
 		sizeof(vpu_module_init_gxm) / sizeof(struct vpu_ctrl_s),
 	.module_init_table = vpu_module_init_gxm,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_gx,
 };
@@ -1366,7 +1361,6 @@ static struct vpu_data_s vpu_data_txl = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_gx,
 };
@@ -1394,7 +1388,6 @@ static struct vpu_data_s vpu_data_txlx = {
 	.module_init_table_cnt =
 		sizeof(vpu_module_init_txlx) / sizeof(struct vpu_ctrl_s),
 	.module_init_table = vpu_module_init_txlx,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_txlx,
 };
@@ -1421,7 +1414,6 @@ static struct vpu_data_s vpu_data_axg = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_txlx,
 };
@@ -1448,7 +1440,6 @@ static struct vpu_data_s vpu_data_g12a = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_txlx,
 };
@@ -1475,7 +1466,6 @@ static struct vpu_data_s vpu_data_g12b = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_txlx,
 };
@@ -1502,7 +1492,6 @@ static struct vpu_data_s vpu_data_tl1 = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_gxb,
 	.reset_table = vpu_reset_tl1,
 };
@@ -1529,36 +1518,8 @@ static struct vpu_data_s vpu_data_sm1 = {
 
 	.module_init_table_cnt = 0,
 	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
 	.hdmi_iso_table = vpu_hdmi_iso_sm1,
 	.reset_table = vpu_reset_txlx,
-};
-
-static struct vpu_data_s vpu_data_tm2 = {
-	.chip_type = VPU_CHIP_TM2,
-	.chip_name = "tm2",
-	.clk_level_dft = CLK_LEVEL_DFT_G12A,
-	.clk_level_max = CLK_LEVEL_MAX_G12A,
-	.fclk_div_table = fclk_div_table_g12a,
-
-	.gp_pll_valid = 0,
-	.mem_pd_reg1_valid = 1,
-	.mem_pd_reg2_valid = 1,
-	.mem_pd_reg3_valid = 1,
-	.mem_pd_reg4_valid = 1,
-
-	.mem_pd_table_cnt =
-		sizeof(vpu_mem_pd_tm2) / sizeof(struct vpu_ctrl_s),
-	.clk_gate_table_cnt =
-		sizeof(vpu_clk_gate_g12a) / sizeof(struct vpu_ctrl_s),
-	.mem_pd_table = vpu_mem_pd_tm2,
-	.clk_gate_table = vpu_clk_gate_g12a,
-
-	.module_init_table_cnt = 0,
-	.module_init_table = NULL,
-	.hdmi_iso_pre_table = vpu_hdmi_iso_pre_gxb,
-	.hdmi_iso_table = vpu_hdmi_iso_sm1,
-	.reset_table = vpu_reset_tl1,
 };
 
 static const struct of_device_id vpu_of_table[] = {
@@ -1605,10 +1566,6 @@ static const struct of_device_id vpu_of_table[] = {
 	{
 		.compatible = "amlogic, vpu-sm1",
 		.data = &vpu_data_sm1,
-	},
-	{
-		.compatible = "amlogic, vpu-tm2",
-		.data = &vpu_data_tm2,
 	},
 	{},
 };

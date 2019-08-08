@@ -421,15 +421,18 @@ static struct ddr_port_desc ddr_port_desc_txhd[] __initdata = {
 	{ .port_id = 47, .port_name = "DEMOD"         }
 };
 
-static struct ddr_port_desc ddr_port_desc_tl1[] __initdata = {
+static struct ddr_port_desc ddr_port_desc_sm1[] __initdata = {
 	{ .port_id =  0, .port_name = "ARM"           },
-	{ .port_id =  1, .port_name = "MALI0"         },
-	{ .port_id =  3, .port_name = "HDCP_HDMI"     },
+	{ .port_id =  1, .port_name = "MALI"          },
+	{ .port_id =  2, .port_name = "PCIE"          },
+	{ .port_id =  3, .port_name = "HDCP"          },
 	{ .port_id =  4, .port_name = "HEVC FRONT"    },
 	{ .port_id =  5, .port_name = "TEST"          },
 	{ .port_id =  6, .port_name = "USB3.0"        },
 	{ .port_id =  7, .port_name = "DEVICE"        },
 	{ .port_id =  8, .port_name = "HEVC BACK"     },
+	{ .port_id =  9, .port_name = "H265ENC"       },
+	{ .port_id = 10, .port_name = "NNA"           },
 	{ .port_id = 16, .port_name = "VPU READ1"     },
 	{ .port_id = 17, .port_name = "VPU READ2"     },
 	{ .port_id = 18, .port_name = "VPU READ3"     },
@@ -452,9 +455,9 @@ static struct ddr_port_desc ddr_port_desc_tl1[] __initdata = {
 	{ .port_id = 43, .port_name = "SD_EMMC_C"     },
 	{ .port_id = 44, .port_name = "SPICC2"        },
 	{ .port_id = 45, .port_name = "ETHERNET"      },
-	{ .port_id = 46, .port_name = "SANA"          },
-	{ .port_id = 47, .port_name = "DEMOD"         }
+	{ .port_id = 46, .port_name = "SANA"          }
 };
+
 
 static struct ddr_port_desc *chip_ddr_port;
 static unsigned char chip_ddr_port_num;
@@ -524,9 +527,9 @@ int __init ddr_find_port_desc(int cpu_type, struct ddr_port_desc **desc)
 		desc_size = ARRAY_SIZE(ddr_port_desc_g12b);
 		break;
 
-	case MESON_CPU_MAJOR_ID_TL1:
-		*desc = ddr_port_desc_tl1;
-		desc_size = ARRAY_SIZE(ddr_port_desc_tl1);
+	case MESON_CPU_MAJOR_ID_SM1:
+		*desc = ddr_port_desc_sm1;
+		desc_size = ARRAY_SIZE(ddr_port_desc_sm1);
 		break;
 
 	default:

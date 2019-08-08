@@ -269,9 +269,13 @@
 #define CLKID_24M               (CLKID_MISC_BASE + 9)
 #define CLKID_12M_DIV           (CLKID_MISC_BASE + 10)
 #define CLKID_12M_GATE          (CLKID_MISC_BASE + 11)
+/* gen clock */
+#define CLKID_GEN_CLK_SEL	(CLKID_MISC_BASE + 12)
+#define	CLKID_GEN_CLK_DIV	(CLKID_MISC_BASE + 13)
+#define CLKID_GEN_CLK		(CLKID_MISC_BASE + 14)
 
 /*G12B clk*/
-#define CLKID_G12B_ADD_BASE           (CLKID_MISC_BASE + 12)
+#define CLKID_G12B_ADD_BASE           (CLKID_MISC_BASE + 15)
 #define CLKID_CPUB_FCLK_P             (CLKID_G12B_ADD_BASE + 0)
 #define CLKID_CPUB_CLK                (CLKID_G12B_ADD_BASE + 1)
 /*G12B gate*/
@@ -311,8 +315,10 @@
 #define CLKID_CSI_ADPAT_CLK           (CLKID_SM1_ADD_BASE + 14)
 #define CLKID_TEMP_SENSOR_CLK         (CLKID_SM1_ADD_BASE + 15)
 #define CLKID_CSI_PHY_CLK             (CLKID_SM1_ADD_BASE + 16)
+#define CLKID_MIPI_CSI_PHY_CLK_COMP   (CLKID_SM1_ADD_BASE + 17)
+#define CLKID_CSI_ADAPT_CLK_COMP      (CLKID_SM1_ADD_BASE + 18)
 
-#define CLKID_AO_BASE           (CLKID_SM1_ADD_BASE + 17)
+#define CLKID_AO_BASE           (CLKID_SM1_ADD_BASE + 19)
 #define CLKID_AO_CLK81          (CLKID_AO_BASE + 0)
 #define CLKID_SARADC_MUX        (CLKID_AO_BASE + 1)
 #define CLKID_SARADC_DIV        (CLKID_AO_BASE + 2)

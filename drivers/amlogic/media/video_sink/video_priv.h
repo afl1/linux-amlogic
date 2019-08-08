@@ -32,6 +32,8 @@
 #define DEBUG_FLAG_LATENCY             0x200000
 #define DEBUG_FLAG_PTS_TRACE            0x400000
 #define DEBUG_FLAG_FRAME_DETECT            0x800000
+#define DEBUG_FLAG_OMX_DEBUG_DROP_FRAME        0x1000000
+#define DEBUG_FLAG_OMX_DISABLE_DROP_FRAME        0x2000000
 
 /*for video.c's static int debug_flag;*/
 
@@ -48,6 +50,7 @@
 #define VIDEO_NOTIFY_PROVIDER_PUT 0x04
 #define VIDEO_NOTIFY_FRAME_WAIT   0x08
 #define VIDEO_NOTIFY_POS_CHANGED  0x10
+#define VIDEO_NOTIFY_NEED_NO_COMP  0x20
 
 struct video_dev_s {
 	int vpp_off;
@@ -152,7 +155,7 @@ u32 get_videopip_enabled(void);
 struct device *get_video_device(void);
 
 #ifdef CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE
-int ext_frame_capture_poll(struct vframe_s *vf);
+int ext_frame_capture_poll(int endflags);
 #endif
 
 extern u32 disp_canvas_index[2][6];
