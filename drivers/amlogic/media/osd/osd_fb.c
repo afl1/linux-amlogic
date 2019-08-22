@@ -226,11 +226,11 @@ static struct fb_var_screeninfo fb_def_var[] = {
 		.yoffset         = 0,
 		.bits_per_pixel = 32,
 		.grayscale       = 0,
-		.red             = {16, 8, 0},
-		.green           = {8, 8, 0},
-		.blue            = {0, 8, 0},
-		.transp          = {24, 0, 0},
-		.nonstd          = 1,
+		.red             = {0, 0, 0},
+		.green           = {0, 0, 0},
+		.blue            = {0, 0, 0},
+		.transp          = {0, 0, 0},
+		.nonstd          = 0,
 		.activate        = FB_ACTIVATE_NOW,
 		.height          = -1,
 		.width           = -1,
@@ -389,7 +389,10 @@ struct ion_handle *fb_ion_handle[OSD_COUNT][OSD_MAX_BUF_NUM];
 static int osd_cursor(struct fb_info *fbi, struct fb_cursor *var);
 #endif
 
+#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
 extern int  soft_cursor(struct fb_info *info, struct fb_cursor *cursor);
+
+static int overscan_ratio = 100;	/* at % */
 
 static int osd_set_fb_var(int index, const struct vinfo_s *vinfo)
 {
@@ -407,14 +410,65 @@ static int osd_set_fb_var(int index, const struct vinfo_s *vinfo)
 	return 0;
 }
 
+static void overscan_window(const struct vinfo_s *vinfo, int percent,
+		int *left, int *top, int *width, int *height)
+{
+	const int step = 2;
+
+	*left = (100 - percent) * vinfo->width / (100 * 2 * step);
+	*top = (100 - percent) * vinfo->height / (100 * 2 * step);
+	*width = (vinfo->width - *left) - *left - 1;
+	*height = (vinfo->height - *top) - *top - 1;
+}
+
 static void osd_set_fb_parameters(int index, const struct vinfo_s *vinfo)
 {
+	int left, top, width, height;
+
 	osd_set_free_scale_enable_hw(index, 0);
 	osd_set_free_scale_mode_hw(index, 1);
-	osd_set_free_scale_axis_hw(index, 0, 0, vinfo->width, vinfo->height);
-	osd_set_window_axis_hw(index, 0, 0, vinfo->width, vinfo->height);
+	osd_set_free_scale_axis_hw(index, 0, 0,
+		(vinfo->width - 1), (vinfo->height - 1));
+	if (overscan_ratio == 100) {
+		osd_set_window_axis_hw(index, 0, 0,
+			(vinfo->width - 1), (vinfo->height - 1));
+	} else {
+		/* OVERSCAN */
+		overscan_window(vinfo, overscan_ratio,
+			&left, &top, &width, &height);
+		osd_set_window_axis_hw(index, left, top, width, height);
+		osd_set_free_scale_enable_hw(index, 0x10001);
+	}
+
 	osd_enable_hw(index, 1);
 }
+
+static int __init overscan_setup(char *str)
+{
+	int ratio;
+	int ret;
+
+	if (str == NULL)
+		return -EINVAL;
+
+	ret = kstrtoint(str, 0, &ratio);
+
+	if (ret != 0)
+		ratio = 100;
+	else
+		if (ratio > 100)
+			ratio = 100;
+		else
+			if (ratio < 80)
+				ratio = 80;
+
+	overscan_ratio = ratio;
+
+	return 0;
+}
+
+__setup("overscan=", overscan_setup);
+#endif /* CONFIG_ARCH_MESON64_ODROID_COMMON */
 
 phys_addr_t get_fb_rmem_paddr(int index)
 {
@@ -692,7 +746,7 @@ static int osd_set_par(struct fb_info *info)
 
 	output_index = get_output_device_id(fbdev->fb_index);
 
-	if (fbdev->fb_index < osd_hw.osd_meson_dev.viu1_osd_count) {
+	if (fbdev->fb_index <= OSD3) {
 		vinfo = get_current_vinfo();
 		if (!vinfo) {
 			osd_log_err("current vinfo NULL\n");
@@ -1505,7 +1559,7 @@ static int osd_open(struct fb_info *info, int arg)
 
 	fb_index = fbdev->fb_index;
 	if ((osd_meson_dev.has_viu2)
-		&& (fb_index == osd_meson_dev.viu2_index)) {
+		&& (fb_index == OSD4)) {
 		int vpu_clkc_rate;
 
 		/* select mux0, if select mux1, mux0 must be set */
@@ -1878,11 +1932,42 @@ done:
 	return err;
 }
 
+static bool monitor_onoff_action;
+
 int osd_blank(int blank_mode, struct fb_info *info)
 {
 	osd_enable_hw(info->node, (blank_mode != 0) ? 0 : 1);
+
+	if (!monitor_onoff_action)
+		return 0;
+
+	switch (blank_mode) {
+	case FB_BLANK_UNBLANK:
+		control_hdmiphy(true);
+		break;
+	case FB_BLANK_POWERDOWN:
+		control_hdmiphy(false);
+		break;
+	case FB_BLANK_NORMAL:
+	case FB_BLANK_HSYNC_SUSPEND:
+	case FB_BLANK_VSYNC_SUSPEND:
+	default:
+		break;
+	}
+
 	return 0;
 }
+
+static int __init osd_setup_monitor_onoff(char *str)
+{
+	if (!strcmp(str, "true") || !strcmp(str, "1"))
+		monitor_onoff_action = true;
+	else
+		monitor_onoff_action = false;
+
+	return 0;
+}
+__setup("monitor_onoff=", osd_setup_monitor_onoff);
 
 static int osd_pan_display(struct fb_var_screeninfo *var,
 			   struct fb_info *fbi)
@@ -1934,10 +2019,11 @@ static struct fb_ops osd_ops = {
 	.fb_fillrect    = cfb_fillrect,
 	.fb_copyarea    = cfb_copyarea,
 	.fb_imageblit   = cfb_imageblit,
-#if !defined(CONFIG_AMLOGIC_MEDIA_FB_OSD2_CURSOR)
+#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON) \
+	&& !defined(CONFIG_AMLOGIC_MEDIA_FB_OSD2_CURSOR)
 	.fb_cursor      = soft_cursor,
 #else
-#ifdef CONFIG_FB_SOFT_CURSOR
+#if defined(CONFIG_FB_SOFT_CURSOR)
 	.fb_cursor      = soft_cursor,
 #endif
 #ifdef CONFIG_AMLOGIC_MEDIA_FB_OSD2_CURSOR
@@ -2003,10 +2089,6 @@ int osd_notify_callback(struct notifier_block *block, unsigned long cmd,
 	switch (cmd) {
 	case  VOUT_EVENT_MODE_CHANGE:
 		set_osd_logo_freescaler();
-		if (!strcmp(vinfo->name, "dummy_panel"))
-			osd_set_hold_line(MAX_HOLD_LINE);
-		else
-			osd_set_hold_line(DEFAULT_HOLD_LINE);
 		if (osd_hw.osd_meson_dev.cpu_id == __MESON_CPU_MAJOR_ID_G12B &&
 			is_meson_rev_b())
 			set_reset_rdma_trigger_line();
@@ -3829,7 +3911,7 @@ static struct osd_device_data_s osd_gxl = {
 static struct osd_device_data_s osd_gxm = {
 	.cpu_id = __MESON_CPU_MAJOR_ID_GXM,
 	.osd_ver = OSD_NORMAL,
-	.afbc_type = NO_AFBC,
+	.afbc_type = MESON_AFBC,
 	.osd_count = 2,
 	.has_deband = 0,
 	.has_lut = 0,
@@ -3969,6 +4051,21 @@ static struct osd_device_data_s osd_tm2 = {
 	.dummy_data = 0x00808000,
 	.has_viu2 = 1,
 	.osd0_sc_independ = 1,
+};
+
+static struct osd_device_data_s osd_tm2 = {
+	.cpu_id = __MESON_CPU_MAJOR_ID_TM2,
+	.osd_ver = OSD_HIGH_ONE,
+	.afbc_type = MALI_AFBC,
+	.osd_count = 4,
+	.has_deband = 1,
+	.has_lut = 1,
+	.has_rdma = 1,
+	.has_dolby_vision = 1,
+	.osd_fifo_len = 64, /* fifo len 64*8 = 512 */
+	.vpp_fifo_len = 0xfff,/* 2048 */
+	.dummy_data = 0x00808000,
+	.has_viu2 = 1,
 };
 
 static const struct of_device_id meson_fb_dt_match[] = {
@@ -4227,6 +4324,7 @@ static int osd_probe(struct platform_device *pdev)
 			if (ret)
 				osd_log_info("not found display_size_default\n");
 			else {
+#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
 				if (osd_set_fb_var(index, vinfo)) {
 					/* no available vinfo, set default */
 					fb_def_var[index].xres =
@@ -4251,6 +4349,20 @@ static int osd_probe(struct platform_device *pdev)
 
 				if (fb_def_var[index].bits_per_pixel > 32)
 					fb_def_var[index].bits_per_pixel = 32;
+#else
+				fb_def_var[index].xres = var_screeninfo[0];
+				fb_def_var[index].yres = var_screeninfo[1];
+				fb_def_var[index].xres_virtual =
+					var_screeninfo[2];
+				fb_def_var[index].yres_virtual =
+					var_screeninfo[3];
+				fb_def_var[index].bits_per_pixel =
+					var_screeninfo[4];
+				osd_log_info("init fbdev bpp is:%d\n",
+					fb_def_var[index].bits_per_pixel);
+				if (fb_def_var[index].bits_per_pixel > 32)
+					fb_def_var[index].bits_per_pixel = 32;
+#endif
 			}
 		}
 
@@ -4299,8 +4411,10 @@ static int osd_probe(struct platform_device *pdev)
 			ret = device_create_file(fbi->dev, &osd_attrs_viu2[i]);
 		}
 
+#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
 		if (index == DEV_OSD0)
 			osd_set_fb_parameters(DEV_OSD0, vinfo);
+#endif
 	}
 #ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 	early_suspend.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING;
