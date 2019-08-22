@@ -113,6 +113,18 @@ struct extcon_dev *hdmitx_extcon_rxsense;
 struct extcon_dev *hdmitx_extcon_hdcp;
 struct extcon_dev *hdmitx_extcon_cedst;
 
+void control_hdmiphy(bool on)
+{
+	if (on)
+		hdmitx_device.HWOp.CntlMisc(&hdmitx_device,
+			MISC_TMDS_PHY_OP,
+			TMDS_PHY_ENABLE);
+	else
+		hdmitx_device.HWOp.CntlMisc(&hdmitx_device,
+			MISC_TMDS_PHY_OP,
+			TMDS_PHY_DISABLE);
+}
+
 static inline void hdmitx_notify_hpd(int hpd)
 {
 	if (hpd)
