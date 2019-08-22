@@ -789,69 +789,6 @@ static struct hw_enc_clk_val_group setting_enc_clk_val_24[] = {
 	  HDMI_3840x2160p50_16x9_Y420,
 	  HDMI_VIC_END},
 		5940000, 2, 1, 1, VID_PLL_DIV_5, 1, 2, 1, -1},
-	{{HDMI_2560x1600p60_8x5,
-	  HDMI_VIC_END},
-		5405400, 2, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_2560x1440p60_16x9,
-	  HDMI_VIC_END},
-		4830000, 2, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_2560x1080p60_64x27,
-	  HDMI_VIC_END},
-		1855800, 1, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1920x1200p60_8x5,
-	  HDMI_VIC_END},
-		1540000, 1, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1680x1050p60_8x5,
-	  HDMI_VIC_END},
-		1462500, 1, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1600x1200p60_4x3,
-	  HDMI_VIC_END},
-		1560000, 1, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1600x900p60_16x9,
-	  HDMI_VIC_END},
-		/* It works, but the exact hpll is 4320000 */
-		4324320, 4, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1440x900p60_8x5,
-	  HDMI_VIC_END},
-		2134000, 2, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1360x768p60_16x9,
-	  HDMI_VIC_END},
-		3420000, 2, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1280x1024p60_5x4,
-	  HDMI_VIC_END},
-		/* actual hpll : 4320000 */
-		4324320, 4, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1280x800p60_8x5,
-	  HDMI_VIC_END},
-		1422000, 2, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1024x768p60_4x3,
-	  HDMI_VIC_END},
-		2600000, 4, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_1024x600p60_16x9,
-	  HDMI_VIC_END},
-		2058000, 4, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_800x600p60_4x3,
-	  HDMI_VIC_END},
-		1560000, 2, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_800x480p60_5x3,
-	  HDMI_VIC_END},
-		2415000, 4, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_640x480p60_4x3,
-	  HDMI_VIC_END},
-		/* actual hpll : 2014000 */
-		2000000, 4, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_480x320p60_4x3,
-	  HDMI_480x272p60_4x3,
-	  HDMI_VIC_END},
-		/* actual hpll : 2016000 */
-		2000000, 4, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_480x800p60_4x3,
-	  HDMI_VIC_END},
-		2560000, 4, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
-	{{HDMI_CUSTOMBUILT,
-	  HDMI_VIC_END},
-		/* default 1080p60hz */
-		5940000, 4, 1, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
 	{{HDMI_VIC_FAKE,
 	  HDMI_VIC_END},
 		3450000, 1, 2, 2, VID_PLL_DIV_5, 1, 1, 1, -1},
@@ -1050,19 +987,7 @@ static void hdmitx_set_clk_(struct hdmitx_dev *hdev)
 	struct hw_enc_clk_val_group *p_enc = NULL;
 	enum hdmi_vic vic = hdev->cur_VIC;
 	enum hdmi_color_space cs = hdev->para->cs;
-	enum hdmi_color_depth cd;
-	struct hdmi_cea_timing *custom_timing;
-
-	if (hdev->cur_video_param && hdev->cur_video_param->color_depth
-		&& hdev->cur_video_param->color_depth > 0)
-			cd = hdev->cur_video_param->color_depth;
-	else
-		cd = hdev->para->cd;
-	frac_rate = hdev->frac_rate_policy;
-	if (hdev->para->cs == COLORSPACE_YUV420)
-		vic |= 256;
-	pr_info("hdmitx: set clk: VIC = %d  cd = %d  cs = %d frac_rate = %d\n", vic,
-			cd, hdev->para->cs, frac_rate);
+	enum hdmi_color_depth cd = hdev->para->cd;
 
 	/* YUV 422 always use 24B mode */
 	if (cs == COLORSPACE_YUV422)
@@ -1133,31 +1058,6 @@ static void hdmitx_set_clk_(struct hdmitx_dev *hdev)
 		return;
 	}
 next:
-	/* FIXME : consider pixel clocks over 200MHz */
-	if (vic == HDMI_CUSTOMBUILT) {
-		custom_timing = get_custom_timing();
-		p_enc[j].hpll_clk_out = (custom_timing->frac_freq * 10);
-		pr_info("[N2][%s] vic == HDMI_CUSTOMBUILT, frac_freq %d\n",
-				__func__, custom_timing->frac_freq);
-		/* check if hpll clk output is under (140*10)MHz */
-		if (p_enc[j].hpll_clk_out < 1400000) {
-			p_enc[j].hpll_clk_out *= 4;
-			/* control od dividers */
-			p_enc[j].od1 = 4;
-			p_enc[j].od2 = 1;
-			p_enc[j].od3 = 2;
-		} else {
-			/* control od dividers */
-			p_enc[j].od1 = 1;
-			p_enc[j].od2 = 1;
-			p_enc[j].od3 = 2;
-		}
-
-		pr_info("[N2] hpll_clk_out %d, od1 %d, od2 %d, od3 %d\n",
-			p_enc[j].hpll_clk_out,
-			p_enc[j].od1, p_enc[j].od2, p_enc[j].od3);
-	}
-
 	hdmitx_set_cts_sys_clk(hdev);
 	set_hpll_clk_out(p_enc[j].hpll_clk_out);
 	if ((cd == COLORDEPTH_24B) && (hdev->sspll))

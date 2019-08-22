@@ -443,6 +443,8 @@ struct amlsd_host {
 	dma_addr_t		dma_gping; /* 0x400 */
 	dma_addr_t		dma_gpong; /* 0x800 */
 	char is_tunning;
+	char cmd_retune;
+	char find_win;
 	char is_timming;
 	char tuning_mode;
 	unsigned int is_sduart;
@@ -1546,7 +1548,7 @@ struct sd_emmc_config {
 	/*[18]	  Spare,  ??? need check*/
 	u32 spare:1;
 	/*[19]	  Use this descriptor
-	 *even if its owner bit is ???0???б??ии.
+	 *even if its owner bit is ???0???бь?ии.
 	 */
 	u32 ignore_owner:1;
 	/*[20]	  Check data strobe in HS400.*/
@@ -1579,7 +1581,7 @@ struct sd_emmc_status {
 	 *any one of blocks CRC error.
 	 */
 	u32 txd_err:1;
-	/*[9]	   SD/eMMC controller doesn???и??ииt own descriptor.
+	/*[9]	   SD/eMMC controller doesn???и║?ииt own descriptor.
 	 *The owner bit is set cfg_ignore_owner to ignore this error.
 	 */
 	u32 desc_err:1;
@@ -1623,7 +1625,7 @@ struct sd_emmc_irq_en {
 	u32 rxd_err:8;
 	/*[8]	   TX data CRC error. */
 	u32 txd_err:1;
-	/*[9]	   SD/eMMC controller doesn???и??ииt own descriptor. */
+	/*[9]	   SD/eMMC controller doesn???и║?ииt own descriptor. */
 	u32 desc_err:1;
 	/*[10]	  Response CRC error.*/
 	u32 resp_err:1;
@@ -1817,4 +1819,5 @@ extern int ext_codec;
 } while (0)
 
 #endif
+
 

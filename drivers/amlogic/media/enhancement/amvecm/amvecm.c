@@ -5516,7 +5516,7 @@ tvchip_pq_setting:
 		/*cm register init*/
 		cm_init_config(bitdepth);
 		/*lc init*/
-		lc_init();
+		lc_init(bitdepth);
 	}
 	/*probe close sr0 peaking for switch on video*/
 	WRITE_VPP_REG_BITS(VPP_SRSHARP0_CTRL, 1, 0, 1);

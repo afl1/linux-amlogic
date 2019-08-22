@@ -36,7 +36,6 @@
 #include "amve_gamma_table.h"
 #include <linux/io.h>
 #include "dnlp_cal.h"
-#include "local_contrast.h"
 
 #define pr_amve_dbg(fmt, args...)\
 	do {\
@@ -767,14 +766,6 @@ void ve_dnlp_latch_process(void)
 	}
 }
 
-void ve_lc_latch_process(void)
-{
-	if (vecm_latch_flag & FLAG_VE_LC_CURV) {
-		vecm_latch_flag &= ~FLAG_VE_LC_CURV;
-		lc_load_curve(&lc_curve_parm_load);
-	}
-}
-
 void ve_lcd_gamma_process(void)
 {
 	if (vecm_latch_flag & FLAG_GAMMA_TABLE_EN) {
@@ -875,11 +866,6 @@ void ve_dnlp_param_update(void)
 void ve_new_dnlp_param_update(void)
 {
 	vecm_latch_flag |= FLAG_VE_NEW_DNLP;
-}
-
-void ve_lc_curve_update(void)
-{
-	vecm_latch_flag |= FLAG_VE_LC_CURV;
 }
 
 static void video_data_limitation(int *val)
@@ -1409,14 +1395,11 @@ void amvecm_fresh_overscan(struct vframe_s *vf)
 {
 	unsigned int height = 0;
 	unsigned int cur_overscan_timing = 0;
-	unsigned int cur_fmt;
-	unsigned int offset = TIMING_UHD + 1;/*av&atv*/
 
 	if (overscan_disable)
 		return;
 	if (is_dolby_vision_on())
 		return;
-
 	if (overscan_table[0].load_flag) {
 		height = (vf->type & VIDTYPE_COMPRESS) ?
 			vf->compHeight : vf->height;
@@ -1448,57 +1431,19 @@ void amvecm_fresh_overscan(struct vframe_s *vf)
 		vf->pic_mode.ve = overscan_table[overscan_timing].ve;
 		vf->ratio_control |= DISP_RATIO_ADAPTED_PICMODE;
 	}
-	if (overscan_table[offset].load_flag) {
-		cur_fmt = vf->sig_fmt;
-		if (cur_fmt == TVIN_SIG_FMT_CVBS_NTSC_M)
-			cur_overscan_timing = TIMING_NTST_M;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_NTSC_443)
-			cur_overscan_timing = TIMING_NTST_443;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_PAL_I)
-			cur_overscan_timing = TIMING_PAL_I;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_PAL_M)
-			cur_overscan_timing = TIMING_PAL_M;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_PAL_60)
-			cur_overscan_timing = TIMING_PAL_60;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_PAL_CN)
-			cur_overscan_timing = TIMING_PAL_CN;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_SECAM)
-			cur_overscan_timing = TIMING_SECAM;
-		else if (cur_fmt == TVIN_SIG_FMT_CVBS_NTSC_50)
-			cur_overscan_timing = TIMING_NTSC_50;
-		else
-			return;
-		overscan_timing = cur_overscan_timing;
-		overscan_screen_mode =
-			overscan_table[overscan_timing].screen_mode;
-		vf->pic_mode.AFD_enable =
-			overscan_table[overscan_timing].afd_enable;
-		vf->pic_mode.screen_mode = overscan_screen_mode;
-		vf->pic_mode.hs = overscan_table[overscan_timing].hs;
-		vf->pic_mode.he = overscan_table[overscan_timing].he;
-		vf->pic_mode.vs = overscan_table[overscan_timing].vs;
-		vf->pic_mode.ve = overscan_table[overscan_timing].ve;
-		vf->ratio_control |= DISP_RATIO_ADAPTED_PICMODE;
-	}
 }
 
 void amvecm_reset_overscan(void)
 {
-	unsigned int offset = TIMING_UHD + 1;/*av&atv*/
-	enum ve_source_input_e source0;
-
-	source0 = overscan_table[0].source;
 	if (overscan_disable)
 		return;
 	if (overscan_timing != TIMING_MAX) {
 		overscan_timing = TIMING_MAX;
-		if ((source0 != SOURCE_DTV) && (source0 != SOURCE_MPEG))
+		if ((overscan_table[0].source != SOURCE_DTV) &&
+			(overscan_table[0].source != SOURCE_MPEG)) {
 			overscan_table[0].load_flag = 0;
-		else if (!atv_source_flg)
-			overscan_table[offset].load_flag = 0;
-		if ((source0 != SOURCE_DTV) && (source0 != SOURCE_MPEG)
-			&& !atv_source_flg)
 			overscan_screen_mode = 0xff;
+		}
 	}
 }
 

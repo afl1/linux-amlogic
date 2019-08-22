@@ -1432,6 +1432,28 @@ int tsync_set_startsync_mode(int mode)
 }
 EXPORT_SYMBOL(tsync_set_startsync_mode);
 
+bool tsync_check_vpts_discontinuity(unsigned int vpts)
+{
+	unsigned int systemtime;
+
+	if (tsync_get_mode() != TSYNC_MODE_PCRMASTER)
+		return false;
+	if (tsync_pcr_demux_pcr_used() == 0)
+		systemtime = timestamp_pcrscr_get();
+	else
+		systemtime = timestamp_pcrscr_get()
+			+ timestamp_get_pcrlatency();
+	if (vpts > systemtime &&
+		(vpts - systemtime) > tsync_vpts_discontinuity_margin())
+		return true;
+	else if (systemtime > vpts &&
+		(systemtime - vpts) > tsync_vpts_discontinuity_margin())
+		return true;
+	else
+		return false;
+}
+EXPORT_SYMBOL(tsync_check_vpts_discontinuity);
+
 static ssize_t store_pcr_recover(struct class *class,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
@@ -2023,8 +2045,10 @@ static ssize_t store_latency(struct class *class,
 static ssize_t show_apts_lookup(struct class *class,
 	struct class_attribute *attrr, char *buf)
 {
+	u32 frame_size;
 	unsigned int  pts = 0xffffffff;
-	pts_lookup_offset(PTS_TYPE_AUDIO, apts_lookup_offset, &pts, 300);
+	pts_lookup_offset(PTS_TYPE_AUDIO, apts_lookup_offset,
+		&pts, &frame_size, 300);
 	return sprintf(buf, "0x%x\n", pts);
 }
 

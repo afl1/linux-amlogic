@@ -117,6 +117,11 @@
 #define HHI_SYS1_PLL_CNTL5        0x394 /* 0xe5 offset in data sheet */
 #define HHI_SYS1_PLL_CNTL6        0x398 /* 0xe6 offset in data sheet */
 /*****************/
+
+/* For SM1 only */
+#define HHI_CSI2_ADAPT_CLK_CNTL		0x3c0 /* 0xf0 offset in data sheet */
+/*****************/
+
 #define HHI_BT656_CLK_CNTL		0x3d4 /* 0xf5 offset in data sheet */
 #define HHI_SPICC_CLK_CNTL      0x3dc /* 0xf7 offset in data sheet */
 /* AO registers*/
@@ -152,11 +157,9 @@ static const struct pll_rate_table g12a_pll_rate_table[] = {
 	PLL_RATE(1608000000ULL, 134, 1, 1), /*DCO=3216M*/
 	PLL_RATE(1704000000ULL, 142, 1, 1), /*DCO=3408M*/
 	PLL_RATE(1800000000ULL, 150, 1, 1), /*DCO=3600M*/
-	PLL_RATE(1872000000ULL, 156, 1, 1), /*DCO=3744M*/
 	PLL_RATE(1896000000ULL, 158, 1, 1), /*DCO=3792M*/
 	PLL_RATE(1908000000ULL, 159, 1, 1), /*DCO=3816M*/
 	PLL_RATE(1920000000ULL, 160, 1, 1), /*DCO=3840M*/
-	PLL_RATE(1992000000ULL, 166, 1, 1), /*DCO=3984M*/
 	PLL_RATE(2004000000ULL, 167, 1, 1), /*DCO=4008M*/
 	PLL_RATE(2016000000ULL, 168, 1, 1), /*DCO=4032M*/
 	PLL_RATE(2100000000ULL, 175, 1, 1), /*DCO=4200M*/
