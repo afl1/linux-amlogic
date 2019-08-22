@@ -8100,8 +8100,7 @@ static void set_blend_reg(struct layer_blend_reg_s *blend_reg)
 		}
 		else {
 			if ((blend_reg->osd_blend_din_scope_v[i] & 0xffff) == 0)
-				blend_reg->osd_blend_din_scope_v[i] =
-					0xffffffff;
+				blend_reg->osd_blend_din_scope_v[i] = 0x43a0439;
 			VSYNCOSD_WR_MPEG_REG(
 				VIU_OSD_BLEND_DIN0_SCOPE_V + reg_offset * i,
 				blend_reg->osd_blend_din_scope_v[i]);
