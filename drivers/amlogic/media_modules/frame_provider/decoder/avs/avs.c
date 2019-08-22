@@ -46,8 +46,6 @@
 #include <linux/amlogic/tee.h>
 
 
-#include <trace/events/meson_atrace.h>
-
 #define DRIVER_NAME "amvdec_avs"
 #define MODULE_NAME "amvdec_avs"
 
@@ -580,6 +578,7 @@ static void vavs_isr(void)
 				pr_info("buffer_index %d, canvas addr %x\n",
 					   buffer_index, vf->canvas0Addr);
 			}
+			 vf->pts = (pts_valid)?pts:0;
 			vf->pts_us64 = (pts_valid) ? pts_us64 : 0;
 			vfbuf_use[buffer_index]++;
 			vf->mem_handle =
@@ -712,11 +711,14 @@ static void vavs_isr(void)
 			vf->canvas0Addr = vf->canvas1Addr =
 				index2canvas(buffer_index);
 			vf->type_original = vf->type;
-
+			vf->pts = (pts_valid)?pts:0;
 			vf->pts_us64 = (pts_valid) ? pts_us64 : 0;
 			if (debug_flag & AVS_DEBUG_PRINT) {
 				pr_info("buffer_index %d, canvas addr %x\n",
-					   buffer_index, vf->canvas0Addr);
+					   buffer_index, vf->canvas0Addr
+					   );
+			 pr_info("PicType = %d, PTS = 0x%x\n",
+				picture_type, vf->pts);
 			}
 
 			vfbuf_use[buffer_index]++;
@@ -1546,9 +1548,6 @@ static s32 vavs_init(void)
 	stat |= STAT_TIMER_INIT;
 
 	amvdec_enable();
-
-	vdec_enable_DMC(NULL);
-
 	vavs_local_init();
 
 	if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_GXM)
@@ -1616,13 +1615,12 @@ static s32 vavs_init(void)
 #endif
 
 	if (vavs_amstream_dec_info.rate != 0) {
-		if (!is_reset) {
+		if (!is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 					VFRAME_EVENT_PROVIDER_FR_HINT,
 					(void *)((unsigned long)
 					vavs_amstream_dec_info.rate));
-			fr_hint_status = VDEC_HINTED;
-		}
+		fr_hint_status = VDEC_HINTED;
 	} else
 		fr_hint_status = VDEC_NEED_HINT;
 
@@ -1780,7 +1778,7 @@ static int amvdec_avs_remove(struct platform_device *pdev)
 	}
 #endif
 	if (stat & STAT_VF_HOOK) {
-		if (fr_hint_status == VDEC_HINTED)
+		if (fr_hint_status == VDEC_HINTED && !is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_FR_END_HINT, NULL);
 		fr_hint_status = VDEC_NO_NEED_HINT;
@@ -1801,8 +1799,6 @@ static int amvdec_avs_remove(struct platform_device *pdev)
 
 
 	amvdec_disable();
-	vdec_disable_DMC(NULL);
-
 	pic_type = 0;
 	if (mm_blk_handle) {
 		decoder_bmmu_box_free(mm_blk_handle);
@@ -1822,12 +1818,32 @@ static int amvdec_avs_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int avs_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int avs_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops avs_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(avs_suspend, avs_resume)
+};
+#endif
 
 static struct platform_driver amvdec_avs_driver = {
 	.probe = amvdec_avs_probe,
 	.remove = amvdec_avs_remove,
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &avs_pm_ops,
+#endif
 	}
 };
 

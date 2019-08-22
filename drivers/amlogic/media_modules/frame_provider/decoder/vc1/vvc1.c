@@ -43,7 +43,8 @@
 #include "../utils/firmware.h"
 #include <linux/amlogic/tee.h>
 #include <linux/delay.h>
-#include <trace/events/meson_atrace.h>
+
+
 
 
 #define DRIVER_NAME "amvdec_vc1"
@@ -53,8 +54,6 @@
 #if 1	/* //MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6 */
 #define NV21
 #endif
-
-#define VC1_MAX_SUPPORT_SIZE (1920*1088)
 
 #define I_PICTURE   0
 #define P_PICTURE   1
@@ -1196,18 +1195,9 @@ static int amvdec_vc1_probe(struct platform_device *pdev)
 	}
 	pdata->private = pbi;
 
-	if (pdata->sys_info) {
+	if (pdata->sys_info)
 		vvc1_amstream_dec_info = *pdata->sys_info;
 
-		if ((vvc1_amstream_dec_info.height != 0) &&
-			(vvc1_amstream_dec_info.width >
-			(VC1_MAX_SUPPORT_SIZE/vvc1_amstream_dec_info.height))) {
-			pr_info("amvdec_vc1: over size, unsupport: %d * %d\n",
-				vvc1_amstream_dec_info.width,
-				vvc1_amstream_dec_info.height);
-			return -EFAULT;
-		}
-	}
 	pdata->dec_status = vvc1_dec_status;
 	pdata->set_isreset = vvc1_set_isreset;
 	is_reset = 0;
@@ -1277,16 +1267,32 @@ static int amvdec_vc1_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int vc1_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int vc1_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops vc1_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(vc1_suspend, vc1_resume)
+};
+#endif
 
 static struct platform_driver amvdec_vc1_driver = {
 	.probe = amvdec_vc1_probe,
 	.remove = amvdec_vc1_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &vc1_pm_ops,
+#endif
 	}
 };
 

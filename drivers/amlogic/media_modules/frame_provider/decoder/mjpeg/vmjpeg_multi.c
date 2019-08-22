@@ -44,7 +44,6 @@
 #include <linux/amlogic/media/codec_mm/configs.h>
 #include "../utils/firmware.h"
 
-#include <trace/events/meson_atrace.h>
 
 
 #define MEM_NAME "codec_mmjpeg"
@@ -304,6 +303,9 @@ static irqreturn_t vmjpeg_isr(struct vdec_s *vdec, int irq)
 	vf->orientation = 0;
 	hw->vfbuf_use[index]++;
 
+	vf->mem_handle =
+		decoder_bmmu_box_get_mem_handle(
+			hw->mm_blk_handle, index);
 	kfifo_put(&hw->display_q, (const struct vframe_s *)vf);
 	ATRACE_COUNTER(MODULE_NAME, vf->pts);
 	hw->frame_num++;
@@ -1056,8 +1058,6 @@ static void vmjpeg_work(struct work_struct *work)
 		pr_info("%s: force exit\n", __func__);
 		if (hw->stat & STAT_ISR_REG) {
 			amvdec_stop();
-			/*disable mbox interrupt */
-			WRITE_VREG(ASSIST_MBOX1_MASK, 0);
 			vdec_free_irq(VDEC_IRQ_1, (void *)hw);
 			hw->stat &= ~STAT_ISR_REG;
 		}
@@ -1076,6 +1076,8 @@ static void vmjpeg_work(struct work_struct *work)
 		amvdec_stop();
 		hw->stat &= ~STAT_VDEC_RUN;
 	}
+	/*disable mbox interrupt */
+	WRITE_VREG(ASSIST_MBOX1_MASK, 0);
 	wait_vmjpeg_search_done(hw);
 	/* mark itself has all HW resource released and input released */
 	if (vdec->parallel_dec == 1)
@@ -1230,16 +1232,32 @@ static int ammvdec_mjpeg_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int mmjpeg_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int mmjpeg_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops mmjpeg_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mmjpeg_suspend, mmjpeg_resume)
+};
+#endif
 
 static struct platform_driver ammvdec_mjpeg_driver = {
 	.probe = ammvdec_mjpeg_probe,
 	.remove = ammvdec_mjpeg_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &mmjpeg_pm_ops,
+#endif
 	}
 };
 

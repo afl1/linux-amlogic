@@ -70,10 +70,6 @@
 #include "../../../common/chips/decoder_cpu_ver_info.h"
 #include "frame_check.h"
 
-#ifdef CONFIG_AMLOGIC_POWER
-#include <linux/amlogic/power_ctrl.h>
-#endif
-
 static DEFINE_MUTEX(vdec_mutex);
 
 #define MC_SIZE (4096 * 4)
@@ -102,6 +98,7 @@ static int fps_clear;
 
 
 static int force_nosecure_even_drm;
+static int disable_switch_single_to_mult;
 
 static DEFINE_SPINLOCK(vdec_spin_lock);
 
@@ -462,6 +459,55 @@ static void free_canvas_ex(int index, int id)
 
 }
 
+static void vdec_disable_DMC(struct vdec_s *vdec)
+{
+	/*close first,then wait pedding end,timing suggestion from vlsi*/
+	struct vdec_input_s *input = &vdec->input;
+	unsigned long flags;
+	unsigned int mask = 0;
+
+	if (input->target == VDEC_INPUT_TARGET_VLD) {
+		mask = (1 << 13);
+		if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+			mask = (1 << 21);
+	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
+		mask = (1 << 4); /*hevc*/
+		if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+			mask |= (1 << 8); /*hevcb */
+	}
+	spin_lock_irqsave(&vdec_spin_lock, flags);
+	codec_dmcbus_write(DMC_REQ_CTRL,
+	codec_dmcbus_read(DMC_REQ_CTRL) & ~mask);
+	spin_unlock_irqrestore(&vdec_spin_lock, flags);
+
+	while (!(codec_dmcbus_read(DMC_CHAN_STS)
+			& mask))
+			;
+
+	pr_debug("%s input->target= 0x%x\n", __func__,  input->target);
+}
+
+static void vdec_enable_DMC(struct vdec_s *vdec)
+{
+	struct vdec_input_s *input = &vdec->input;
+	unsigned long flags;
+	unsigned int mask = 0;
+
+	if (input->target == VDEC_INPUT_TARGET_VLD) {
+		mask = (1 << 13);
+		if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+			mask = (1 << 21);
+	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
+		mask = (1 << 4); /*hevc*/
+		if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+			mask |= (1 << 8); /*hevcb */
+	}
+	spin_lock_irqsave(&vdec_spin_lock, flags);
+	codec_dmcbus_write(DMC_REQ_CTRL,
+	codec_dmcbus_read(DMC_REQ_CTRL) | mask);
+	spin_unlock_irqrestore(&vdec_spin_lock, flags);
+	pr_debug("%s input->target= 0x%x\n", __func__,  input->target);
+}
 
 
 
@@ -678,6 +724,22 @@ static const char * const vdec_device_name[] = {
 
 #endif
 
+/*
+ * Only support time sliced decoding for frame based input,
+ * so legacy decoder can exist with time sliced decoder.
+ */
+static const char *get_dev_name(bool use_legacy_vdec, int format)
+{
+#ifdef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
+	if (use_legacy_vdec)
+		return vdec_device_name[format * 2];
+	else
+		return vdec_device_name[format * 2 + 1];
+#else
+	return vdec_device_name[format];
+#endif
+}
+
 #ifdef VDEC_DEBUG_SUPPORT
 static u64 get_current_clk(void)
 {
@@ -747,6 +809,22 @@ int vdec_set_decinfo(struct vdec_s *vdec, struct dec_sysinfo *p)
 		sizeof(struct dec_sysinfo)))
 		return -EFAULT;
 
+	/* force switch to mult instance if supports this profile. */
+	if ((vdec->type == VDEC_TYPE_SINGLE) &&
+		!disable_switch_single_to_mult) {
+		const char *str = NULL;
+		char fmt[16] = {0};
+
+		str = strchr(get_dev_name(false, vdec->format), '_');
+		if (!str)
+			return -1;
+
+		sprintf(fmt, "m%s", ++str);
+		if (is_support_profile(fmt) &&
+			vdec->sys_info->format != VIDEO_DEC_FORMAT_H263)
+			vdec->type = VDEC_TYPE_STREAM_PARSER;
+	}
+
 	return 0;
 }
 EXPORT_SYMBOL(vdec_set_decinfo);
@@ -758,6 +836,7 @@ struct vdec_s *vdec_create(struct stream_port_s *port,
 	struct vdec_s *vdec;
 	int type = VDEC_TYPE_SINGLE;
 	int id;
+
 	if (is_mult_inc(port->type))
 		type = (port->type & PORT_TYPE_FRAME) ?
 			VDEC_TYPE_FRAME_BLOCK :
@@ -809,7 +888,6 @@ int vdec_set_format(struct vdec_s *vdec, int format)
 		vdec->slave->format = format;
 		vdec->slave->port_flag |= PORT_FLAG_VFORMAT;
 	}
-
 	//trace_vdec_set_format(vdec, format);/*DEBUG_TMP*/
 
 	return 0;
@@ -849,6 +927,12 @@ int vdec_get_status(struct vdec_s *vdec)
 	return vdec->status;
 }
 EXPORT_SYMBOL(vdec_get_status);
+
+int vdec_get_frame_num(struct vdec_s *vdec)
+{
+	return vdec->input.have_frame_num;
+}
+EXPORT_SYMBOL(vdec_get_frame_num);
 
 void vdec_set_status(struct vdec_s *vdec, int status)
 {
@@ -1427,13 +1511,19 @@ EXPORT_SYMBOL(vdec_need_more_data);
 void hevc_wait_ddr(void)
 {
 	unsigned long flags;
+	unsigned int mask = 0;
+
+	mask = 1 << 4; /* hevc */
+	if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+		mask |= (1 << 8); /* hevcb */
+
 	spin_lock_irqsave(&vdec_spin_lock, flags);
 	codec_dmcbus_write(DMC_REQ_CTRL,
-		codec_dmcbus_read(DMC_REQ_CTRL) & (~(1 << 4)));
+		codec_dmcbus_read(DMC_REQ_CTRL) & ~mask);
 	spin_unlock_irqrestore(&vdec_spin_lock, flags);
 
 	while (!(codec_dmcbus_read(DMC_CHAN_STS)
-		& (1 << 4)))
+		& mask))
 		;
 }
 
@@ -1520,74 +1610,12 @@ void vdec_clean_input(struct vdec_s *vdec)
 }
 EXPORT_SYMBOL(vdec_clean_input);
 
-
-static int vdec_input_read_restore(struct vdec_s *vdec)
-{
-	struct vdec_input_s *input = &vdec->input;
-
-	if (!vdec_stream_based(vdec))
-		return 0;
-
-	if (!input->swap_valid) {
-		if (input->target == VDEC_INPUT_TARGET_VLD) {
-			WRITE_VREG(VLD_MEM_VIFIFO_START_PTR,
-				input->start);
-			WRITE_VREG(VLD_MEM_VIFIFO_END_PTR,
-				input->start + input->size - 8);
-			WRITE_VREG(VLD_MEM_VIFIFO_CURR_PTR,
-				input->start);
-			WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 1);
-			WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 0);
-
-			/* set to manual mode */
-			WRITE_VREG(VLD_MEM_VIFIFO_BUF_CNTL, 2);
-			WRITE_VREG(VLD_MEM_VIFIFO_RP, input->start);
-		} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
-				WRITE_VREG(HEVC_STREAM_START_ADDR,
-					input->start);
-				WRITE_VREG(HEVC_STREAM_END_ADDR,
-					input->start + input->size);
-				WRITE_VREG(HEVC_STREAM_RD_PTR,
-					input->start);
-		}
-		return 0;
-	}
-	if (input->target == VDEC_INPUT_TARGET_VLD) {
-		/* restore read side */
-		WRITE_VREG(VLD_MEM_SWAP_ADDR,
-			input->swap_page_phys);
-
-		/*swap active*/
-		WRITE_VREG(VLD_MEM_SWAP_CTL, 1);
-
-		/*wait swap busy*/
-		while (READ_VREG(VLD_MEM_SWAP_CTL) & (1<<7))
-			;
-
-		WRITE_VREG(VLD_MEM_SWAP_CTL, 0);
-	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
-		/* restore read side */
-		WRITE_VREG(HEVC_STREAM_SWAP_ADDR,
-			input->swap_page_phys);
-		WRITE_VREG(HEVC_STREAM_SWAP_CTRL, 1);
-
-		while (READ_VREG(HEVC_STREAM_SWAP_CTRL)
-			& (1<<7))
-			;
-		WRITE_VREG(HEVC_STREAM_SWAP_CTRL, 0);
-	}
-
-	return 0;
-}
-
-
 int vdec_sync_input(struct vdec_s *vdec)
 {
 	struct vdec_input_s *input = &vdec->input;
 	u32 rp = 0, wp = 0, fifo_len = 0;
 	int size;
 
-	vdec_input_read_restore(vdec);
 	vdec_sync_input_read(vdec);
 	vdec_sync_input_write(vdec);
 	if (input->target == VDEC_INPUT_TARGET_VLD) {
@@ -1773,46 +1801,6 @@ int vdec_destroy(struct vdec_s *vdec)
 EXPORT_SYMBOL(vdec_destroy);
 
 /*
- * Only support time sliced decoding for frame based input,
- * so legacy decoder can exist with time sliced decoder.
- */
-static const char *get_dev_name(bool use_legacy_vdec, int format)
-{
-#ifdef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
-	if (use_legacy_vdec)
-		return vdec_device_name[format * 2];
-	else
-		return vdec_device_name[format * 2 + 1];
-#else
-	return vdec_device_name[format];
-#endif
-}
-
-struct vdec_s *vdec_get_with_id(unsigned int id)
-{
-	struct vdec_s *vdec, *ret_vdec = NULL;
-	struct vdec_core_s *core = vdec_core;
-	unsigned long flags;
-
-	if (id >= MAX_INSTANCE_MUN)
-		return NULL;
-
-	flags = vdec_core_lock(vdec_core);
-	if (!list_empty(&core->connected_vdec_list)) {
-		list_for_each_entry(vdec, &core->connected_vdec_list, list) {
-			if (vdec->id == id) {
-				pr_info("searched avaliable vdec connected, id = %d\n", id);
-				ret_vdec = vdec;
-				break;
-			}
-		}
-	}
-	vdec_core_unlock(vdec_core, flags);
-
-	return ret_vdec;
-}
-
-/*
  *register vdec_device
  * create output, vfm or create ionvideo output
  */
@@ -1855,7 +1843,8 @@ s32 vdec_init(struct vdec_s *vdec, int is_4k)
 			vdec->format == VFORMAT_VP9) ?
 				VDEC_INPUT_TARGET_HEVC :
 				VDEC_INPUT_TARGET_VLD);
-
+	if (vdec_single(vdec))
+		vdec_enable_DMC(vdec);
 	p->cma_dev = vdec_core->cma_dev;
 	p->get_canvas = get_canvas;
 	p->get_canvas_ex = get_canvas_ex;
@@ -1969,7 +1958,7 @@ s32 vdec_init(struct vdec_s *vdec, int is_4k)
 			} else {
 				snprintf(vdec->vfm_map_chain, VDEC_MAP_NAME_SIZE,
 					"%s %s", vdec->vf_provider_name,
-					"amlvideo deinterlace amvideo");
+					"amlvideo ppmgr deinterlace amvideo");
 			}
 			snprintf(vdec->vfm_map_id, VDEC_MAP_NAME_SIZE,
 				"vdec-map-%d", vdec->id);
@@ -1980,7 +1969,7 @@ s32 vdec_init(struct vdec_s *vdec, int is_4k)
 				"aml_video.1 videosync.0 videopip");
 			snprintf(vdec->vfm_map_id, VDEC_MAP_NAME_SIZE,
 				"vdec-map-%d", vdec->id);
-		} else if (p->frame_base_video_path == FRAME_BASE_PATH_V4L_VIDEO) {
+		} else if (p->frame_base_video_path == FRAME_BASE_PATH_V4L_OSD) {
 			snprintf(vdec->vfm_map_chain, VDEC_MAP_NAME_SIZE,
 				"%s %s", vdec->vf_provider_name,
 				vdec->vf_receiver_name);
@@ -1990,6 +1979,10 @@ s32 vdec_init(struct vdec_s *vdec, int is_4k)
 			snprintf(vdec->vfm_map_chain, VDEC_MAP_NAME_SIZE,
 				"%s %s", vdec->vf_provider_name,
 				"amvideo");
+		} else if (p->frame_base_video_path == FRAME_BASE_PATH_V4L_VIDEO) {
+			snprintf(vdec->vfm_map_chain, VDEC_MAP_NAME_SIZE,
+				"%s %s %s", vdec->vf_provider_name,
+				vdec->vf_receiver_name, "amvideo");
 			snprintf(vdec->vfm_map_id, VDEC_MAP_NAME_SIZE,
 				"vdec-map-%d", vdec->id);
 		}
@@ -2039,14 +2032,13 @@ s32 vdec_init(struct vdec_s *vdec, int is_4k)
 
 		if (vdec_core->hint_fr_vdec == vdec) {
 			if (p->sys_info->rate != 0) {
-				if (!vdec->is_reset) {
+				if (!vdec->is_reset)
 					vf_notify_receiver(p->vf_provider_name,
 						VFRAME_EVENT_PROVIDER_FR_HINT,
 						(void *)
 						((unsigned long)
 						p->sys_info->rate));
-					vdec->fr_hint_state = VDEC_HINTED;
-				}
+				vdec->fr_hint_state = VDEC_HINTED;
 			} else {
 				vdec->fr_hint_state = VDEC_NEED_HINT;
 			}
@@ -2105,7 +2097,8 @@ void vdec_release(struct vdec_s *vdec)
 	if (vdec->vframe_provider.name) {
 		if (!vdec_single(vdec)) {
 			if (vdec_core->hint_fr_vdec == vdec
-			&& vdec->fr_hint_state == VDEC_HINTED)
+			&& vdec->fr_hint_state == VDEC_HINTED
+			&& !vdec->is_reset)
 				vf_notify_receiver(
 					vdec->vf_provider_name,
 					VFRAME_EVENT_PROVIDER_FR_END_HINT,
@@ -2136,7 +2129,8 @@ void vdec_release(struct vdec_s *vdec)
 	vdec_frame_check_exit(vdec);
 #endif
 	vdec_fps_clear(vdec->id);
-
+	if (atomic_read(&vdec_core->vdec_nr) == 1)
+		vdec_disable_DMC(vdec);
 	platform_device_unregister(vdec->dev);
 	pr_debug("vdec_release instance %p, total %d\n", vdec,
 		atomic_read(&vdec_core->vdec_nr));
@@ -2556,7 +2550,6 @@ static int vdec_core_thread(void *data)
 {
 	struct vdec_core_s *core = (struct vdec_core_s *)data;
 	struct sched_param param = {.sched_priority = MAX_RT_PRIO/2};
-	unsigned long flags;
 	int i;
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
@@ -2632,7 +2625,6 @@ static int vdec_core_thread(void *data)
 		 */
 
 		/* check disconnected decoders */
-		flags = vdec_core_lock(vdec_core);
 		list_for_each_entry_safe(vdec, tmp,
 			&core->connected_vdec_list, list) {
 			if ((vdec->status == VDEC_STATUS_CONNECTED) &&
@@ -2648,7 +2640,6 @@ static int vdec_core_thread(void *data)
 				list_move(&vdec->list, &disconnecting_list);
 			}
 		}
-		vdec_core_unlock(vdec_core, flags);
 		mutex_unlock(&vdec_mutex);
 		/* elect next vdec to be scheduled */
 		vdec = core->last_vdec;
@@ -2904,8 +2895,6 @@ void vdec_poweron(enum vdec_type_e core)
 	dma_addr_t decomp_dma_addr;
 	u32 decomp_addr_aligned = 0;
 	int hevc_loop = 0;
-	int sleep_val, iso_val;
-	bool is_power_ctrl_ver2 = false;
 
 	if (core >= VDEC_MAX)
 		return;
@@ -2923,10 +2912,6 @@ void vdec_poweron(enum vdec_type_e core)
 		return;
 	}
 
-	is_power_ctrl_ver2 =
-		((get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_SM1) &&
-		(get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_TL1)) ? true : false;
-
 	if (hevc_workaround_needed() &&
 		(core == VDEC_HEVC)) {
 		decomp_addr = codec_mm_dma_alloc_coherent(MEM_NAME,
@@ -2942,25 +2927,11 @@ void vdec_poweron(enum vdec_type_e core)
 	}
 
 	if (core == VDEC_1) {
-		sleep_val = is_power_ctrl_ver2 ? 0x2 : 0xc;
-		iso_val = is_power_ctrl_ver2 ? 0x2 : 0xc0;
-
 		/* vdec1 power on */
-#ifdef CONFIG_AMLOGIC_POWER
-		if (is_support_power_ctrl()) {
-			if (power_ctrl_sleep_mask(true, sleep_val, 0)) {
-				mutex_unlock(&vdec_mutex);
-				pr_err("vdec-1 power on ctrl sleep fail.\n");
-				return;
-			}
-		} else {
-			WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) & ~sleep_val);
-		}
-#else
 		WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-			READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) & ~sleep_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) &
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? ~0x2 : ~0xc));
 		/* wait 10uS */
 		udelay(10);
 		/* vdec1 soft reset */
@@ -2976,23 +2947,11 @@ void vdec_poweron(enum vdec_type_e core)
 		vdec_clock_hi_enable();
 		/* power up vdec memories */
 		WRITE_VREG(DOS_MEM_PD_VDEC, 0);
-
 		/* remove vdec1 isolation */
-#ifdef CONFIG_AMLOGIC_POWER
-		if (is_support_power_ctrl()) {
-			if (power_ctrl_iso_mask(true, iso_val, 0)) {
-				mutex_unlock(&vdec_mutex);
-				pr_err("vdec-1 power on ctrl iso fail.\n");
-				return;
-			}
-		} else {
-			WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-				READ_AOREG(AO_RTI_GEN_PWR_ISO0) & ~iso_val);
-		}
-#else
 		WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-			READ_AOREG(AO_RTI_GEN_PWR_ISO0) & ~iso_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_ISO0) &
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? ~0x2 : ~0xC0));
 		/* reset DOS top registers */
 		WRITE_VREG(DOS_VDEC_MCRCC_STALL_CTRL, 0);
 		if (get_cpu_major_id() >=
@@ -3001,10 +2960,15 @@ void vdec_poweron(enum vdec_type_e core)
 			 *enable VDEC_1 DMC request
 			 */
 			unsigned long flags;
+			unsigned int mask = 0;
+
+			mask = 1 << 13;
+			if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+				mask = 1 << 21;
 
 			spin_lock_irqsave(&vdec_spin_lock, flags);
 			codec_dmcbus_write(DMC_REQ_CTRL,
-				codec_dmcbus_read(DMC_REQ_CTRL) | (1 << 13));
+				codec_dmcbus_read(DMC_REQ_CTRL) | mask);
 			spin_unlock_irqrestore(&vdec_spin_lock, flags);
 		}
 	} else if (core == VDEC_2) {
@@ -3031,25 +2995,11 @@ void vdec_poweron(enum vdec_type_e core)
 		}
 	} else if (core == VDEC_HCODEC) {
 		if (has_hdec()) {
-			sleep_val = is_power_ctrl_ver2 ? 0x1 : 0x3;
-			iso_val = is_power_ctrl_ver2 ? 0x1 : 0x30;
-
 			/* hcodec power on */
-#ifdef CONFIG_AMLOGIC_POWER
-			if (is_support_power_ctrl()) {
-				if (power_ctrl_sleep_mask(true, sleep_val, 0)) {
-					mutex_unlock(&vdec_mutex);
-					pr_err("hcodec power on ctrl sleep fail.\n");
-					return;
-				}
-			} else {
-				WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-					READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) & ~sleep_val);
-			}
-#else
 			WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) & ~sleep_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) &
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? ~0x1 : ~0x3));
 			/* wait 10uS */
 			udelay(10);
 			/* hcodec soft reset */
@@ -3060,46 +3010,21 @@ void vdec_poweron(enum vdec_type_e core)
 			/* power up hcodec memories */
 			WRITE_VREG(DOS_MEM_PD_HCODEC, 0);
 			/* remove hcodec isolation */
-#ifdef CONFIG_AMLOGIC_POWER
-			if (is_support_power_ctrl()) {
-				if (power_ctrl_iso_mask(true, iso_val, 0)) {
-					mutex_unlock(&vdec_mutex);
-					pr_err("hcodec power on ctrl iso fail.\n");
-					return;
-				}
-			} else {
-				WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-					READ_AOREG(AO_RTI_GEN_PWR_ISO0) & ~iso_val);
-			}
-#else
 			WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-				READ_AOREG(AO_RTI_GEN_PWR_ISO0) & ~iso_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_ISO0) &
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? ~0x1 : ~0x30));
 		}
 	} else if (core == VDEC_HEVC) {
 		if (has_hevc_vdec()) {
 			bool hevc_fixed = false;
 
-			sleep_val = is_power_ctrl_ver2 ? 0x4 : 0xc0;
-			iso_val = is_power_ctrl_ver2 ? 0x4 : 0xc00;
-
 			while (!hevc_fixed) {
 				/* hevc power on */
-#ifdef CONFIG_AMLOGIC_POWER
-				if (is_support_power_ctrl()) {
-					if (power_ctrl_sleep_mask(true, sleep_val, 0)) {
-						mutex_unlock(&vdec_mutex);
-						pr_err("hevc power on ctrl sleep fail.\n");
-						return;
-					}
-				} else {
-					WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-						READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) & ~sleep_val);
-				}
-#else
 				WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-					READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) & ~sleep_val);
-#endif
+					READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) &
+					(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+					? ~0x4 : ~0xc0));
 				/* wait 10uS */
 				udelay(10);
 				/* hevc soft reset */
@@ -3114,21 +3039,11 @@ void vdec_poweron(enum vdec_type_e core)
 				/* power up hevc memories */
 				WRITE_VREG(DOS_MEM_PD_HEVC, 0);
 				/* remove hevc isolation */
-#ifdef CONFIG_AMLOGIC_POWER
-				if (is_support_power_ctrl()) {
-					if (power_ctrl_iso_mask(true, iso_val, 0)) {
-						mutex_unlock(&vdec_mutex);
-						pr_err("hevc power on ctrl iso fail.\n");
-						return;
-					}
-				} else {
-					WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-						READ_AOREG(AO_RTI_GEN_PWR_ISO0) & ~iso_val);
-				}
-#else
 				WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-					READ_AOREG(AO_RTI_GEN_PWR_ISO0) & ~iso_val);
-#endif
+					READ_AOREG(AO_RTI_GEN_PWR_ISO0) &
+					(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+					? ~0x4 : ~0xc00));
+
 				if (!hevc_workaround_needed())
 					break;
 
@@ -3180,9 +3095,6 @@ EXPORT_SYMBOL(vdec_poweron);
 
 void vdec_poweroff(enum vdec_type_e core)
 {
-	int sleep_val, iso_val;
-	bool is_power_ctrl_ver2 = false;
-
 	if (core >= VDEC_MAX)
 		return;
 
@@ -3194,61 +3106,37 @@ void vdec_poweroff(enum vdec_type_e core)
 		return;
 	}
 
-	is_power_ctrl_ver2 =
-		((get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_SM1) &&
-		(get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_TL1)) ? true : false;
-
 	if (core == VDEC_1) {
-		sleep_val = is_power_ctrl_ver2 ? 0x2 : 0xc;
-		iso_val = is_power_ctrl_ver2 ? 0x2 : 0xc0;
-
 		if (get_cpu_major_id() >=
 			AM_MESON_CPU_MAJOR_ID_GXBB) {
 			/* disable VDEC_1 DMC REQ*/
 			unsigned long flags;
+			unsigned int mask = 0;
+
+			mask = 1 << 13;
+			if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+				mask = 1 << 21;
 
 			spin_lock_irqsave(&vdec_spin_lock, flags);
 			codec_dmcbus_write(DMC_REQ_CTRL,
-				codec_dmcbus_read(DMC_REQ_CTRL) & (~(1 << 13)));
+				codec_dmcbus_read(DMC_REQ_CTRL) & ~mask);
 			spin_unlock_irqrestore(&vdec_spin_lock, flags);
 			udelay(10);
 		}
 		/* enable vdec1 isolation */
-#ifdef CONFIG_AMLOGIC_POWER
-		if (is_support_power_ctrl()) {
-			if (power_ctrl_iso_mask(false, iso_val, 0)) {
-				mutex_unlock(&vdec_mutex);
-				pr_err("vdec-1 power off ctrl iso fail.\n");
-				return;
-			}
-		} else {
-			WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-				READ_AOREG(AO_RTI_GEN_PWR_ISO0) | iso_val);
-		}
-#else
 		WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-			READ_AOREG(AO_RTI_GEN_PWR_ISO0) | iso_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_ISO0) |
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? 0x2 : 0xc0));
 		/* power off vdec1 memories */
 		WRITE_VREG(DOS_MEM_PD_VDEC, 0xffffffffUL);
 		/* disable vdec1 clock */
 		vdec_clock_off();
 		/* vdec1 power off */
-#ifdef CONFIG_AMLOGIC_POWER
-		if (is_support_power_ctrl()) {
-			if (power_ctrl_sleep_mask(false, sleep_val, 0)) {
-				mutex_unlock(&vdec_mutex);
-				pr_err("vdec-1 power off ctrl sleep fail.\n");
-				return;
-			}
-		} else {
-			WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) | sleep_val);
-		}
-#else
 		WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-			READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) | sleep_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) |
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? 0x2 : 0xc));
 	} else if (core == VDEC_2) {
 		if (has_vdec2()) {
 			/* enable vdec2 isolation */
@@ -3266,92 +3154,42 @@ void vdec_poweroff(enum vdec_type_e core)
 		}
 	} else if (core == VDEC_HCODEC) {
 		if (has_hdec()) {
-			sleep_val = is_power_ctrl_ver2 ? 0x1 : 0x3;
-			iso_val = is_power_ctrl_ver2 ? 0x1 : 0x30;
-
 			/* enable hcodec isolation */
-#ifdef CONFIG_AMLOGIC_POWER
-			if (is_support_power_ctrl()) {
-				if (power_ctrl_iso_mask(false, iso_val, 0)) {
-					mutex_unlock(&vdec_mutex);
-					pr_err("hcodec power off ctrl iso fail.\n");
-					return;
-				}
-			} else {
-				WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-					READ_AOREG(AO_RTI_GEN_PWR_ISO0) | iso_val);
-			}
-#else
 			WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-				READ_AOREG(AO_RTI_GEN_PWR_ISO0) | iso_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_ISO0) |
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? 0x1 : 0x30));
 			/* power off hcodec memories */
 			WRITE_VREG(DOS_MEM_PD_HCODEC, 0xffffffffUL);
 			/* disable hcodec clock */
 			hcodec_clock_off();
 			/* hcodec power off */
-#ifdef CONFIG_AMLOGIC_POWER
-			if (is_support_power_ctrl()) {
-				if (power_ctrl_sleep_mask(false, sleep_val, 0)) {
-					mutex_unlock(&vdec_mutex);
-					pr_err("hcodec power off ctrl sleep fail.\n");
-					return;
-				}
-			} else {
-				WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-					READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) | sleep_val);
-			}
-#else
 			WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) | sleep_val);
-#endif
+				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) |
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? 0x1 : 3));
 		}
 	} else if (core == VDEC_HEVC) {
 		if (has_hevc_vdec()) {
-			sleep_val = is_power_ctrl_ver2 ? 0x4 : 0xc0;
-			iso_val = is_power_ctrl_ver2 ? 0x4 : 0xc00;
-
 			if (no_powerdown == 0) {
 				/* enable hevc isolation */
-#ifdef CONFIG_AMLOGIC_POWER
-				if (is_support_power_ctrl()) {
-					if (power_ctrl_iso_mask(false, iso_val, 0)) {
-						mutex_unlock(&vdec_mutex);
-						pr_err("hevc power off ctrl iso fail.\n");
-						return;
-					}
-				} else {
-					WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-						READ_AOREG(AO_RTI_GEN_PWR_ISO0) | iso_val);
-				}
-#else
 				WRITE_AOREG(AO_RTI_GEN_PWR_ISO0,
-					READ_AOREG(AO_RTI_GEN_PWR_ISO0) | iso_val);
-#endif
-				/* power off hevc memories */
-				WRITE_VREG(DOS_MEM_PD_HEVC, 0xffffffffUL);
+					READ_AOREG(AO_RTI_GEN_PWR_ISO0) |
+					(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+					? 0x4 : 0xc00));
+			/* power off hevc memories */
+			WRITE_VREG(DOS_MEM_PD_HEVC, 0xffffffffUL);
 
-				/* disable hevc clock */
-				hevc_clock_off();
-				if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
-					hevc_back_clock_off();
+			/* disable hevc clock */
+			hevc_clock_off();
+			if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+				hevc_back_clock_off();
 
-				/* hevc power off */
-#ifdef CONFIG_AMLOGIC_POWER
-				if (is_support_power_ctrl()) {
-					if (power_ctrl_sleep_mask(false, sleep_val, 0)) {
-						mutex_unlock(&vdec_mutex);
-						pr_err("hevc power off ctrl sleep fail.\n");
-						return;
-					}
-				} else {
-					WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-						READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) | sleep_val);
-				}
-#else
-				WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
-					READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) | sleep_val);
-#endif
+			/* hevc power off */
+			WRITE_AOREG(AO_RTI_GEN_PWR_SLEEP0,
+				READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) |
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
+				? 0x4 : 0xc0));
 			} else {
 				pr_info("!!!!!!!!not power down\n");
 				hevc_reset_core(NULL);
@@ -3369,8 +3207,7 @@ bool vdec_on(enum vdec_type_e core)
 
 	if (core == VDEC_1) {
 		if (((READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) &
-			(((get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_SM1) &&
-			(get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_TL1))
+			(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
 			? 0x2 : 0xc)) == 0) &&
 			(READ_HHI_REG(HHI_VDEC_CLK_CNTL) & 0x100))
 			ret = true;
@@ -3383,8 +3220,7 @@ bool vdec_on(enum vdec_type_e core)
 	} else if (core == VDEC_HCODEC) {
 		if (has_hdec()) {
 			if (((READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) &
-				(((get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_SM1) &&
-				(get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_TL1))
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
 				? 0x1 : 0x3)) == 0) &&
 				(READ_HHI_REG(HHI_VDEC_CLK_CNTL) & 0x1000000))
 				ret = true;
@@ -3392,8 +3228,7 @@ bool vdec_on(enum vdec_type_e core)
 	} else if (core == VDEC_HEVC) {
 		if (has_hevc_vdec()) {
 			if (((READ_AOREG(AO_RTI_GEN_PWR_SLEEP0) &
-				(((get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_SM1) &&
-				(get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_TL1))
+				(get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_SM1
 				? 0x4 : 0xc0)) == 0) &&
 				(READ_HHI_REG(HHI_VDEC2_CLK_CNTL) & 0x1000000))
 				ret = true;
@@ -3499,43 +3334,22 @@ int vdec_source_changed(int format, int width, int height, int fps)
 
 }
 EXPORT_SYMBOL(vdec_source_changed);
-
-void vdec_disable_DMC(struct vdec_s *vdec)
-{
-	/*close first,then wait pedding end,timing suggestion from vlsi*/
-	unsigned long flags;
-	spin_lock_irqsave(&vdec_spin_lock, flags);
-	codec_dmcbus_write(DMC_REQ_CTRL,
-		codec_dmcbus_read(DMC_REQ_CTRL) & (~(1 << 13)));
-	spin_unlock_irqrestore(&vdec_spin_lock, flags);
-
-	while (!(codec_dmcbus_read(DMC_CHAN_STS)
-		& (1 << 13)))
-		;
-}
-EXPORT_SYMBOL(vdec_disable_DMC);
-
-void vdec_enable_DMC(struct vdec_s *vdec)
-{
-	unsigned long flags;
-	spin_lock_irqsave(&vdec_spin_lock, flags);
-	codec_dmcbus_write(DMC_REQ_CTRL,
-	codec_dmcbus_read(DMC_REQ_CTRL) | (1 << 13));
-	spin_unlock_irqrestore(&vdec_spin_lock, flags);
-}
-
-EXPORT_SYMBOL(vdec_enable_DMC);
-
 void vdec_reset_core(struct vdec_s *vdec)
 {
 	unsigned long flags;
+	unsigned int mask = 0;
+
+	mask = 1 << 13; /*bit13: DOS VDEC interface*/
+	if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+		mask = 1 << 21; /*bit21: DOS VDEC interface*/
+
 	spin_lock_irqsave(&vdec_spin_lock, flags);
 	codec_dmcbus_write(DMC_REQ_CTRL,
-		codec_dmcbus_read(DMC_REQ_CTRL) & (~(1 << 13)));
+		codec_dmcbus_read(DMC_REQ_CTRL) & ~mask);
 	spin_unlock_irqrestore(&vdec_spin_lock, flags);
 
 	while (!(codec_dmcbus_read(DMC_CHAN_STS)
-		& (1 << 13)))
+		& mask))
 		;
 	/*
 	 * 2: assist
@@ -3560,33 +3374,62 @@ void vdec_reset_core(struct vdec_s *vdec)
 
 	spin_lock_irqsave(&vdec_spin_lock, flags);
 	codec_dmcbus_write(DMC_REQ_CTRL,
-		codec_dmcbus_read(DMC_REQ_CTRL) | (1 << 13));
+		codec_dmcbus_read(DMC_REQ_CTRL) | mask);
 	spin_unlock_irqrestore(&vdec_spin_lock, flags);
 }
 EXPORT_SYMBOL(vdec_reset_core);
 
-void hevc_enable_DMC(struct vdec_s *vdec)
+void hevc_mmu_dma_check(struct vdec_s *vdec)
 {
-	unsigned long flags;
-	spin_lock_irqsave(&vdec_spin_lock, flags);
-	codec_dmcbus_write(DMC_REQ_CTRL,
-	codec_dmcbus_read(DMC_REQ_CTRL) | (1 << 4));
-	spin_unlock_irqrestore(&vdec_spin_lock, flags);
+	ulong timeout;
+	u32 data;
+	if (get_cpu_major_id() < AM_MESON_CPU_MAJOR_ID_G12A)
+		return;
+	timeout = jiffies + HZ/100;
+	while (1) {
+		data  = READ_VREG(HEVC_CM_CORE_STATUS);
+		if ((data & 0x1) == 0)
+			break;
+		if (time_after(jiffies, timeout)) {
+			if (debug & 0x10)
+				pr_info(" %s sao mmu dma idle\n", __func__);
+			break;
+		}
+	}
+	/*disable sao mmu dma */
+	CLEAR_VREG_MASK(HEVC_SAO_MMU_DMA_CTRL, 1 << 0);
+	timeout = jiffies + HZ/100;
+	while (1) {
+		data  = READ_VREG(HEVC_SAO_MMU_DMA_STATUS);
+		if ((data & 0x1))
+			break;
+		if (time_after(jiffies, timeout)) {
+			if (debug & 0x10)
+				pr_err("%s sao mmu dma timeout, num_buf_used = 0x%x\n",
+				__func__, (READ_VREG(HEVC_SAO_MMU_STATUS) >> 16));
+			break;
+		}
+	}
 }
-
-EXPORT_SYMBOL(hevc_enable_DMC);
+EXPORT_SYMBOL(hevc_mmu_dma_check);
 
 void hevc_reset_core(struct vdec_s *vdec)
 {
 	unsigned long flags;
+	unsigned int mask = 0;
+
+	mask = 1 << 4; /*bit4: hevc*/
+	if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A)
+		mask |= 1 << 8; /*bit8: hevcb*/
+
 	WRITE_VREG(HEVC_STREAM_CONTROL, 0);
 	spin_lock_irqsave(&vdec_spin_lock, flags);
 	codec_dmcbus_write(DMC_REQ_CTRL,
-		codec_dmcbus_read(DMC_REQ_CTRL) & (~(1 << 4)));
+		codec_dmcbus_read(DMC_REQ_CTRL) & ~mask);
 	spin_unlock_irqrestore(&vdec_spin_lock, flags);
 
 	while (!(codec_dmcbus_read(DMC_CHAN_STS)
-		& (1 << 4)))
+		& mask))
 		;
 
 	if (vdec == NULL || input_frame_based(vdec))
@@ -3617,7 +3460,7 @@ void hevc_reset_core(struct vdec_s *vdec)
 
 	spin_lock_irqsave(&vdec_spin_lock, flags);
 	codec_dmcbus_write(DMC_REQ_CTRL,
-		codec_dmcbus_read(DMC_REQ_CTRL) | (1 << 4));
+		codec_dmcbus_read(DMC_REQ_CTRL) | mask);
 	spin_unlock_irqrestore(&vdec_spin_lock, flags);
 
 }
@@ -4428,6 +4271,7 @@ static ssize_t dump_vdec_blocks_show(struct class *class,
 {
 	struct vdec_core_s *core = vdec_core;
 	char *pbuf = buf;
+	unsigned long flags = vdec_core_lock(vdec_core);
 
 	if (list_empty(&core->connected_vdec_list))
 		pbuf += sprintf(pbuf, "connected vdec list empty\n");
@@ -4438,6 +4282,7 @@ static ssize_t dump_vdec_blocks_show(struct class *class,
 				pbuf, PAGE_SIZE - (pbuf - buf));
 		}
 	}
+	vdec_core_unlock(vdec_core, flags);
 
 	return pbuf - buf;
 }
@@ -4446,6 +4291,7 @@ static ssize_t dump_vdec_chunks_show(struct class *class,
 {
 	struct vdec_core_s *core = vdec_core;
 	char *pbuf = buf;
+	unsigned long flags = vdec_core_lock(vdec_core);
 
 	if (list_empty(&core->connected_vdec_list))
 		pbuf += sprintf(pbuf, "connected vdec list empty\n");
@@ -4456,6 +4302,7 @@ static ssize_t dump_vdec_chunks_show(struct class *class,
 				pbuf, PAGE_SIZE - (pbuf - buf));
 		}
 	}
+	vdec_core_unlock(vdec_core, flags);
 
 	return pbuf - buf;
 }
@@ -4849,6 +4696,7 @@ module_param(parallel_decode, int, 0664);
 module_param(fps_detection, int, 0664);
 module_param(fps_clear, int, 0664);
 module_param(force_nosecure_even_drm, int, 0664);
+module_param(disable_switch_single_to_mult, int, 0664);
 
 module_param(frameinfo_flag, int, 0664);
 MODULE_PARM_DESC(frameinfo_flag,

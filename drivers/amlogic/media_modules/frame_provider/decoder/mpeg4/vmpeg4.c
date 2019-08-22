@@ -42,7 +42,6 @@
 #include <linux/amlogic/media/codec_mm/configs.h>
 #include <linux/amlogic/tee.h>
 
-#include <trace/events/meson_atrace.h>
 
 
 /* #define CONFIG_AM_VDEC_MPEG4_LOG */
@@ -165,7 +164,6 @@ static u64 vmpeg4_ratio64;
 static u32 rate_detect;
 static u32 vmpeg4_rotation;
 static u32 fr_hint_status;
-static u32 keyframe_pts_only;
 
 static u32 total_frame;
 static u32 last_vop_time_inc, last_duration;
@@ -379,7 +377,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 		}
 
 		if ((picture_type == I_PICTURE) ||
-				((P_PICTURE == picture_type) && (keyframe_pts_only == 0))) {
+				(picture_type == P_PICTURE)) {
 			offset = READ_VREG(MP4_OFFSET_REG);
 			/*2500-->3000,because some mpeg4
 			 *video may checkout failed;
@@ -976,8 +974,6 @@ static void vmpeg4_local_init(void)
 		(((unsigned long) vmpeg4_amstream_dec_info.param)
 			>> 16) & 0xffff;
 
-	keyframe_pts_only = ((u32)vmpeg4_amstream_dec_info.param) & 0x100;
-
 	frame_width = frame_height = frame_dur = frame_prog = 0;
 
 	total_frame = 0;
@@ -1100,14 +1096,13 @@ static s32 vmpeg4_init(void)
 	vf_reg_provider(&vmpeg_vf_prov);
 #endif
 	if (vmpeg4_amstream_dec_info.rate != 0) {
-		if (!is_reset) {
+		if (!is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 						VFRAME_EVENT_PROVIDER_FR_HINT,
 						(void *)
 						((unsigned long)
 						vmpeg4_amstream_dec_info.rate));
-			fr_hint_status = VDEC_HINTED;
-		}
+		fr_hint_status = VDEC_HINTED;
 	} else
 		fr_hint_status = VDEC_NEED_HINT;
 
@@ -1188,7 +1183,7 @@ static int amvdec_mpeg4_remove(struct platform_device *pdev)
 	}
 
 	if (stat & STAT_VF_HOOK) {
-		if (fr_hint_status == VDEC_HINTED)
+		if (fr_hint_status == VDEC_HINTED && !is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_FR_END_HINT, NULL);
 		fr_hint_status = VDEC_NO_NEED_HINT;
@@ -1220,16 +1215,32 @@ static int amvdec_mpeg4_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int mpeg4_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int mpeg4_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops mpeg4_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mpeg4_suspend, mpeg4_resume)
+};
+#endif
 
 static struct platform_driver amvdec_mpeg4_driver = {
 	.probe = amvdec_mpeg4_probe,
 	.remove = amvdec_mpeg4_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &mpeg4_pm_ops,
+#endif
 	}
 };
 

@@ -686,6 +686,8 @@ static int video_port_init(struct port_priv_s *priv,
 
 	pbuf->flag |= BUF_FLAG_IN_USE;
 
+	vdec_connect(priv->vdec);
+
 	return 0;
 }
 
@@ -1030,7 +1032,6 @@ static int amstream_port_release(struct port_priv_s *priv)
 	}
 
 	if (port->type & PORT_TYPE_MPTS) {
-		vdec_disconnect(priv->vdec);
 		tsync_pcr_stop();
 		tsdemux_release();
 	}
@@ -1765,8 +1766,10 @@ static int amstream_release(struct inode *inode, struct file *file)
 #else
 			if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_TXLX
 				&& port->vformat == VFORMAT_H264
-				&& bufs[BUF_TYPE_VIDEO].for_4k)
+				&& bufs[BUF_TYPE_VIDEO].for_4k) {
 				vdec_poweroff(VDEC_HEVC);
+				bufs[BUF_TYPE_VIDEO].for_4k = 0;
+			}
 
 			if ((port->vformat == VFORMAT_HEVC
 					|| port->vformat == VFORMAT_AVS2
@@ -3072,19 +3075,19 @@ static long amstream_do_ioctl_old(struct port_priv_s *priv,
 				struct vdec_s *vdec;
 
 				p_userdata_param = &param;
-
 				if (copy_from_user(p_userdata_param,
 					(void __user *)arg,
 					sizeof(struct userdata_param_t))) {
 					r = -EFAULT;
 					break;
 				}
-
+				mutex_lock(&amstream_mutex);
 				vdec = vdec_get_vdec_by_id(p_userdata_param->instance_id);
 				if (vdec) {
 					if (vdec_read_user_data(vdec,
 							p_userdata_param) == 0) {
 						r = -EFAULT;
+						mutex_unlock(&amstream_mutex);
 						break;
 					}
 
@@ -3094,6 +3097,7 @@ static long amstream_do_ioctl_old(struct port_priv_s *priv,
 						r = -EFAULT;
 				} else
 					r = -EINVAL;
+				mutex_unlock(&amstream_mutex);
 			}
 		}
 		break;
@@ -3124,12 +3128,14 @@ static long amstream_do_ioctl_old(struct port_priv_s *priv,
 			struct vdec_s *vdec;
 			int vdec_id;
 
+			mutex_lock(&amstream_mutex);
 			get_user(vdec_id, (int __user *)arg);
 			vdec = vdec_get_vdec_by_id(vdec_id);
 			if (vdec) {
 				vdec_reset_userdata_fifo(vdec, 0);
 				pr_info("reset_userdata_fifo for vdec: %d\n", vdec_id);
 			}
+			mutex_unlock(&amstream_mutex);
 		} else
 			r = -EINVAL;
 		break;
@@ -3281,11 +3287,18 @@ static long amstream_do_ioctl_old(struct port_priv_s *priv,
 	}
 	case AMSTREAM_IOC_SET_DRMMODE:
 		if ((u32) arg == 1) {
-			pr_err("set drmmode\n");
+			pr_err("set drmmode, input must be secure buffer\n");
 			this->flag |= PORT_FLAG_DRM;
 			if ((this->type & PORT_TYPE_VIDEO) &&
 				(priv->vdec))
 				priv->vdec->port_flag |= PORT_FLAG_DRM;
+		} else if ((u32)arg == 2) {
+			pr_err("set drmmode, input must be normal buffer\n");
+			if ((this->type & PORT_TYPE_VIDEO) &&
+				(priv->vdec)) {
+				pr_err("vdec port_flag with drmmode\n");
+				priv->vdec->port_flag |= PORT_FLAG_DRM;
+			}
 		} else {
 			this->flag &= (~PORT_FLAG_DRM);
 			pr_err("no drmmode\n");

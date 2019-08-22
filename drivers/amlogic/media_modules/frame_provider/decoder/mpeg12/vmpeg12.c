@@ -43,7 +43,6 @@
 #include <linux/amlogic/media/codec_mm/configs.h>
 #include <linux/amlogic/tee.h>
 
-#include <trace/events/meson_atrace.h>
 
 
 #ifdef CONFIG_AM_VDEC_MPEG12_LOG
@@ -146,6 +145,7 @@ static const struct vframe_operations_s vmpeg_vf_provider = {
 };
 static void *mm_blk_handle;
 static struct vframe_provider_s vmpeg_vf_prov;
+static int tvp_flag;
 
 static DECLARE_KFIFO(newframe_q, struct vframe_s *, VF_POOL_SIZE);
 static DECLARE_KFIFO(display_q, struct vframe_s *, VF_POOL_SIZE);
@@ -1754,7 +1754,7 @@ static int vmpeg12_canvas_init(void)
 				ccbuf_phyAddress_virt
 					= codec_mm_phys_to_virt(
 						ccbuf_phyAddress);
-				if (!ccbuf_phyAddress_virt) {
+				if ((!ccbuf_phyAddress_virt) && (!tvp_flag)) {
 					ccbuf_phyAddress_virt
 						= codec_mm_vmap(
 							ccbuf_phyAddress,
@@ -1929,7 +1929,8 @@ static void vmpeg12_local_init(void)
 			MAX_BMMU_BUFFER_NUM,
 			4 + PAGE_SHIFT,
 			CODEC_MM_FLAGS_CMA_CLEAR |
-			CODEC_MM_FLAGS_FOR_VDECODER);
+			CODEC_MM_FLAGS_FOR_VDECODER |
+			tvp_flag);
 
 
 	frame_width = frame_height = frame_dur = frame_prog = 0;
@@ -2000,14 +2001,13 @@ static s32 vmpeg12_init(void)
 	vf_reg_provider(&vmpeg_vf_prov);
 #endif
 	if (vmpeg12_amstream_dec_info.rate != 0) {
-		if (!is_reset) {
+		if (!is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_FR_HINT,
 				(void *)
 				((unsigned long)
 				vmpeg12_amstream_dec_info.rate));
-			fr_hint_status = VDEC_HINTED;
-		}
+		fr_hint_status = VDEC_HINTED;
 	} else
 		fr_hint_status = VDEC_NEED_HINT;
 
@@ -2051,6 +2051,7 @@ static int amvdec_mpeg12_probe(struct platform_device *pdev)
 		return -EFAULT;
 	}
 
+	tvp_flag = vdec_secure(pdata) ? CODEC_MM_FLAGS_TVP : 0;
 	if (pdata->sys_info)
 		vmpeg12_amstream_dec_info = *pdata->sys_info;
 
@@ -2117,7 +2118,7 @@ static int amvdec_mpeg12_remove(struct platform_device *pdev)
 
 	cancel_work_sync(&set_clk_work);
 	if (stat & STAT_VF_HOOK) {
-		if (fr_hint_status == VDEC_HINTED)
+		if (fr_hint_status == VDEC_HINTED && !is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_FR_END_HINT, NULL);
 		fr_hint_status = VDEC_NO_NEED_HINT;
@@ -2157,16 +2158,32 @@ static int amvdec_mpeg12_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int mpeg12_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int mpeg12_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops mpeg12_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mpeg12_suspend, mpeg12_resume)
+};
+#endif
 
 static struct platform_driver amvdec_mpeg12_driver = {
 	.probe = amvdec_mpeg12_probe,
 	.remove = amvdec_mpeg12_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &mpeg12_pm_ops,
+#endif
 	}
 };
 

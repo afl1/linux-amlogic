@@ -28,7 +28,8 @@
 #include <linux/amlogic/media/vfm/vframe.h>
 #include <linux/amlogic/media/vfm/vframe_provider.h>
 #include <linux/amlogic/media/vfm/vframe_receiver.h>
-
+#define KERNEL_ATRACE_TAG KERNEL_ATRACE_TAG_VDEC
+#include <trace/events/meson_atrace.h>
 /*#define CONFIG_AM_VDEC_DV*/
 
 #include "vdec_input.h"
@@ -418,11 +419,7 @@ extern void vdec_core_finish_run(struct vdec_s *vdec, unsigned long mask);
 #ifdef VDEC_DEBUG_SUPPORT
 extern void vdec_set_step_mode(void);
 #endif
-
-extern void vdec_disable_DMC(struct vdec_s *vdec);
-extern void vdec_enable_DMC(struct vdec_s *vdec);
-extern void hevc_enable_DMC(struct vdec_s *vdec);
-
+extern void hevc_mmu_dma_check(struct vdec_s *vdec);
 int vdec_read_user_data(struct vdec_s *vdec,
 				struct userdata_param_t *p_userdata_param);
 
@@ -443,7 +440,8 @@ int vdec_get_status(struct vdec_s *vdec);
 
 void vdec_set_timestamp(struct vdec_s *vdec, u64 timestamp);
 
-struct vdec_s *vdec_get_with_id(unsigned int id);
-
 extern struct vframe_qos_s *vdec_get_qos_info(void);
+
+int vdec_get_frame_num(struct vdec_s *vdec);
+
 #endif				/* VDEC_H */

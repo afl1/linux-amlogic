@@ -1656,16 +1656,32 @@ static int amvdec_h264mvc_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int h264mvc_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int h264mvc_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops h264mvc_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(h264mvc_suspend, h264mvc_resume)
+};
+#endif
 
 static struct platform_driver amvdec_h264mvc_driver = {
 	.probe = amvdec_h264mvc_probe,
 	.remove = amvdec_h264mvc_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &h264mvc_pm_ops,
+#endif
 	}
 };
 
@@ -1673,6 +1689,8 @@ static struct codec_profile_t amvdec_hmvc_profile = {
 	.name = "hmvc",
 	.profile = ""
 };
+static struct codec_profile_t amvdec_hmvc_profile_single;
+
 static struct mconfig h264mvc_configs[] = {
 	MC_PU32("stat", &stat),
 	MC_PU32("dbg_mode", &dbg_mode),
@@ -1693,6 +1711,9 @@ static int __init amvdec_h264mvc_driver_init_module(void)
 	}
 
 	vcodec_profile_register(&amvdec_hmvc_profile);
+	amvdec_hmvc_profile_single = amvdec_hmvc_profile;
+	amvdec_hmvc_profile_single.name = "h264mvc";
+	vcodec_profile_register(&amvdec_hmvc_profile_single);
 	INIT_REG_NODE_CONFIGS("media.decoder", &h264mvc_node,
 		"h264mvc", h264mvc_configs, CONFIG_FOR_RW);
 	return 0;

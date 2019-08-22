@@ -58,8 +58,6 @@
 #include <linux/uaccess.h>
 
 
-#include <trace/events/meson_atrace.h>
-
 
 #define DRIVER_NAME "amvdec_h264"
 #define MODULE_NAME "amvdec_h264"
@@ -3918,12 +3916,11 @@ static s32 vh264_init(void)
 #endif
 
 	if (frame_dur != 0) {
-		if (!is_reset) {
+		if (!is_reset)
 			vf_notify_receiver(PROVIDER_NAME,
 					VFRAME_EVENT_PROVIDER_FR_HINT,
 					(void *)((unsigned long)frame_dur));
-			fr_hint_status = VDEC_HINTED;
-		}
+		fr_hint_status = VDEC_HINTED;
 	} else
 		fr_hint_status = VDEC_NEED_HINT;
 
@@ -3975,7 +3972,7 @@ static int vh264_stop(int mode)
 
 	if (stat & STAT_VF_HOOK) {
 		if (mode == MODE_FULL) {
-			if (fr_hint_status == VDEC_HINTED)
+			if (fr_hint_status == VDEC_HINTED && !is_reset)
 				vf_notify_receiver(PROVIDER_NAME,
 					VFRAME_EVENT_PROVIDER_FR_END_HINT,
 					NULL);
@@ -4331,16 +4328,32 @@ static int amvdec_h264_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int h264_suspend(struct device *dev)
+{
+	amvdec_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int h264_resume(struct device *dev)
+{
+	amvdec_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops h264_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(h264_suspend, h264_resume)
+};
+#endif
 
 static struct platform_driver amvdec_h264_driver = {
 	.probe = amvdec_h264_probe,
 	.remove = amvdec_h264_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &h264_pm_ops,
+#endif
 	}
 };
 

@@ -56,9 +56,8 @@
 #include "../utils/firmware.h"
 #include "../../../common/chips/decoder_cpu_ver_info.h"
 #include <linux/amlogic/tee.h>
-#include <trace/events/meson_atrace.h>
 
-#define I_ONLY_SUPPORT
+
 #define MIX_STREAM_SUPPORT
 #define G12A_BRINGUP_DEBUG
 #define CONSTRAIN_MAX_BUF_NUM
@@ -74,7 +73,6 @@
 #define HEVCD_MPP_ANC2AXI_TBL_DATA                 0x3464
 #define HEVC_SAO_MMU_VH1_ADDR                      0x363b
 #define HEVC_SAO_MMU_VH0_ADDR                      0x363a
-#define HEVC_SAO_MMU_STATUS                        0x3639
 
 
 /*
@@ -114,7 +112,6 @@
 
 /*cmd*/
 #define AVS2_10B_DISCARD_NAL                 0xf0
-#define AVS2_SEARCH_NEW_PIC                  0xf1
 #define AVS2_ACTION_ERROR                    0xfe
 #define HEVC_ACTION_ERROR                    0xfe
 #define AVS2_ACTION_DONE                     0xff
@@ -255,13 +252,18 @@ static u32 again_threshold = 0x40;
 
 
 /* DOUBLE_WRITE_MODE is enabled only when NV21 8 bit output is needed */
-/* double_write_mode: 0, no double write
-					  1, 1:1 ratio
-					  2, (1/4):(1/4) ratio
-					  4, (1/2):(1/2) ratio
-					0x10, double write only
-*/
-static u32 double_write_mode = 0x200;
+/* double_write_mode:
+ *	0, no double write;
+ *	1, 1:1 ratio;
+ *	2, (1/4):(1/4) ratio;
+ *	3, (1/4):(1/4) ratio, with both compressed frame included
+ *	4, (1/2):(1/2) ratio;
+ *	0x10, double write only
+ *	0x100, if > 1080p,use mode 4,else use mode 1;
+ *	0x200, if > 1080p,use mode 2,else use mode 1;
+ *	0x300, if > 720p, use mode 4, else use mode 1;
+ */
+static u32 double_write_mode;
 
 #define DRIVER_NAME "amvdec_avs2"
 #define MODULE_NAME "amvdec_avs2"
@@ -751,9 +753,6 @@ struct AVS2Decoder_s {
 	u32 pre_parser_wr_ptr;
 	int need_cache_size;
 	u64 sc_start_time;
-#ifdef I_ONLY_SUPPORT
-	u32 i_only;
-#endif
 	int frameinfo_enable;
 	struct vframe_qos_s vframe_qos;
 };
@@ -871,56 +870,56 @@ static u32 get_valid_double_write_mode(struct AVS2Decoder_s *dec)
 static int get_double_write_mode(struct AVS2Decoder_s *dec)
 {
 	u32 valid_dw_mode = get_valid_double_write_mode(dec);
-	u32 dw;
-	if (valid_dw_mode == 0x100) {
-		int w = dec->avs2_dec.img.width;
-		int h = dec->avs2_dec.img.height;
+	int w = dec->avs2_dec.img.width;
+	int h = dec->avs2_dec.img.height;
+	u32 dw = 0x1; /*1:1*/
+	switch (valid_dw_mode) {
+	case 0x100:
 		if (w > 1920 && h > 1088)
 			dw = 0x4; /*1:2*/
-		else
-			dw = 0x1; /*1:1*/
-
-		return dw;
-	} else if (valid_dw_mode == 0x200) {
-		int w = dec->avs2_dec.img.width;
-		int h = dec->avs2_dec.img.height;
-		if (w > 4096 && h > 2176)
+		break;
+	case 0x200:
+		if (w > 1920 && h > 1088)
+			dw = 0x2; /*1:4*/
+		break;
+	case 0x300:
+		if (w > 1280 && h > 720)
 			dw = 0x4; /*1:2*/
-		else
-			dw = 0x0; /*off*/
-
-		return dw;
+		break;
+	default:
+		dw = valid_dw_mode;
+		break;
 	}
-
-	return valid_dw_mode;
+	return dw;
 }
 
 /* for double write buf alloc */
 static int get_double_write_mode_init(struct AVS2Decoder_s *dec)
 {
 	u32 valid_dw_mode = get_valid_double_write_mode(dec);
-	if (valid_dw_mode == 0x100) {
-		u32 dw;
-		int w = dec->init_pic_w;
-		int h = dec->init_pic_h;
+	u32 dw;
+	int w = dec->init_pic_w;
+	int h = dec->init_pic_h;
+
+	dw = 0x1; /*1:1*/
+	switch (valid_dw_mode) {
+	case 0x100:
 		if (w > 1920 && h > 1088)
 			dw = 0x4; /*1:2*/
-		else
-			dw = 0x1; /*1:1*/
-
-		return dw;
-	} else if (valid_dw_mode == 0x200) {
-		u32 dw;
-		int w = dec->init_pic_w;
-		int h = dec->init_pic_h;
-		if (w > 4096 && h > 2176)
+		break;
+	case 0x200:
+		if (w > 1920 && h > 1088)
+			dw = 0x2; /*1:4*/
+		break;
+	case 0x300:
+		if (w > 1280 && h > 720)
 			dw = 0x4; /*1:2*/
-		else
-			dw = 0x0; /*off*/
-
-		return dw;
+		break;
+	default:
+		dw = valid_dw_mode;
+		break;
 	}
-	return valid_dw_mode;
+	return dw;
 }
 
 static int get_double_write_ratio(struct AVS2Decoder_s *dec,
@@ -3781,10 +3780,9 @@ static void avs2_local_uninit(struct AVS2Decoder_s *dec)
 	dec->rpm_ptr = NULL;
 	dec->lmem_ptr = NULL;
 	if (dec->rpm_addr) {
-		dma_unmap_single(amports_get_dma_device(),
-			dec->rpm_phy_addr, RPM_BUF_SIZE,
-				DMA_FROM_DEVICE);
-		kfree(dec->rpm_addr);
+		dma_free_coherent(amports_get_dma_device(),
+						RPM_BUF_SIZE, dec->rpm_addr,
+						dec->rpm_phy_addr);
 		dec->rpm_addr = NULL;
 	}
 	if (dec->lmem_addr) {
@@ -3894,25 +3892,15 @@ static int avs2_local_init(struct AVS2Decoder_s *dec)
 			& 0x40) >> 6;
 
 	if ((debug & AVS2_DBG_SEND_PARAM_WITH_REG) == 0) {
-		dec->rpm_addr = kmalloc(RPM_BUF_SIZE, GFP_KERNEL);
+		dec->rpm_addr = dma_alloc_coherent(amports_get_dma_device(),
+			RPM_BUF_SIZE,
+			&dec->rpm_phy_addr, GFP_KERNEL);
 		if (dec->rpm_addr == NULL) {
 			pr_err("%s: failed to alloc rpm buffer\n", __func__);
 			return -1;
 		}
-
-		dec->rpm_phy_addr = dma_map_single(amports_get_dma_device(),
-			dec->rpm_addr, RPM_BUF_SIZE, DMA_FROM_DEVICE);
-		if (dma_mapping_error(amports_get_dma_device(),
-			dec->rpm_phy_addr)) {
-			pr_err("%s: failed to map rpm buffer\n", __func__);
-			kfree(dec->rpm_addr);
-			dec->rpm_addr = NULL;
-			return -1;
-		} else {
-			avs2_print(dec, AVS2_DBG_BUFMGR,
-				"rpm_phy_addr %x\n", (u32) dec->rpm_phy_addr);
-		}
-
+		avs2_print(dec, AVS2_DBG_BUFMGR,
+			"rpm_phy_addr %x\n", (u32) dec->rpm_phy_addr);
 		dec->rpm_ptr = dec->rpm_addr;
 	}
 
@@ -3926,17 +3914,7 @@ static int avs2_local_init(struct AVS2Decoder_s *dec)
 		avs2_print(dec, AVS2_DBG_BUFMGR,
 			"%s, lmem_phy_addr %x\n",
 			__func__, (u32)dec->lmem_phy_addr);
-/*
-	dec->lmem_phy_addr = dma_map_single(amports_get_dma_device(),
-		dec->lmem_addr, LMEM_BUF_SIZE, DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(amports_get_dma_device(),
-		dec->lmem_phy_addr)) {
-		pr_err("%s: failed to map lmem buffer\n", __func__);
-		kfree(dec->lmem_addr);
-		dec->lmem_addr = NULL;
-		return -1;
-	}
-*/
+
 	dec->lmem_ptr = dec->lmem_addr;
 
 
@@ -3949,15 +3927,6 @@ static int avs2_local_init(struct AVS2Decoder_s *dec)
 		return -1;
 	}
 	memset(dec->frame_mmu_map_addr, 0, get_frame_mmu_map_size(dec));
-/*	dec->frame_mmu_map_phy_addr = dma_map_single(amports_get_dma_device(),
-	dec->frame_mmu_map_addr, FRAME_MMU_MAP_SIZE, DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(amports_get_dma_device(),
-	dec->frame_mmu_map_phy_addr)) {
-		pr_err("%s: failed to map count_buffer\n", __func__);
-		kfree(dec->frame_mmu_map_addr);
-		dec->frame_mmu_map_addr = NULL;
-		return -1;
-	}*/
 #endif
 
 	ret = 0;
@@ -4654,12 +4623,14 @@ static void debug_buffer_mgr_more(struct AVS2Decoder_s *dec)
 static void avs2_recycle_mmu_buf_tail(struct AVS2Decoder_s *dec)
 {
 	if (dec->cur_fb_idx_mmu != INVALID_IDX) {
-		if (dec->used_4k_num == -1)
+		if (dec->used_4k_num == -1) {
 			dec->used_4k_num =
 			(READ_VREG(HEVC_SAO_MMU_STATUS) >> 16);
-		decoder_mmu_box_free_idx_tail(dec->mmu_box,
+			if (dec->m_ins_flag)
+				hevc_mmu_dma_check(hw_to_vdec(dec));
+			decoder_mmu_box_free_idx_tail(dec->mmu_box,
 			dec->cur_fb_idx_mmu, dec->used_4k_num);
-
+		}
 		dec->cur_fb_idx_mmu = INVALID_IDX;
 		dec->used_4k_num = -1;
 	}
@@ -5436,12 +5407,6 @@ static irqreturn_t vavs2_isr_thread_fn(int irq, void *data)
 			get_rpm_param(
 				&dec->avs2_dec.param);
 		} else {
-			PRINT_LINE();
-			dma_sync_single_for_cpu(
-				amports_get_dma_device(),
-				dec->rpm_phy_addr,
-				RPM_BUF_SIZE,
-				DMA_FROM_DEVICE);
 
 			for (i = 0; i < (RPM_END - RPM_BEGIN); i += 4) {
 				int ii;
@@ -5654,11 +5619,6 @@ static irqreturn_t vavs2_isr_thread_fn(int irq, void *data)
 			dec->slice_idx++;
 
 		PRINT_LINE();
-#ifdef I_ONLY_SUPPORT
-		if ((start_code == PB_PICTURE_START_CODE) &&
-			(dec->i_only & 0x2))
-			ret = -2;
-#endif
 #ifdef AVS2_10B_MMU
 		if (ret >= 0) {
 			ret = avs2_alloc_mmu(dec,
@@ -6022,12 +5982,6 @@ static void vavs2_put_timer_func(unsigned long arg)
 	}
 	if (debug & AVS2_DBG_DUMP_RPM_BUF) {
 		int i;
-		dma_sync_single_for_cpu(
-			amports_get_dma_device(),
-			dec->rpm_phy_addr,
-			RPM_BUF_SIZE,
-			DMA_FROM_DEVICE);
-
 		pr_info("RPM:\n");
 		for (i = 0; i < RPM_BUF_SIZE; i += 4) {
 			int ii;
@@ -6044,12 +5998,6 @@ static void vavs2_put_timer_func(unsigned long arg)
 	}
 	if (debug & AVS2_DBG_DUMP_LMEM_BUF) {
 		int i;
-		dma_sync_single_for_cpu(
-			amports_get_dma_device(),
-			dec->lmem_phy_addr,
-			LMEM_BUF_SIZE,
-			DMA_FROM_DEVICE);
-
 		pr_info("LMEM:\n");
 		for (i = 0; i < LMEM_BUF_SIZE; i += 4) {
 			int ii;
@@ -6239,21 +6187,6 @@ static void vavs2_prot_init(struct AVS2Decoder_s *dec)
 
 }
 
-#ifdef I_ONLY_SUPPORT
-static int vavs2_set_trickmode(struct vdec_s *vdec, unsigned long trickmode)
-{
-	struct AVS2Decoder_s *dec =
-		(struct AVS2Decoder_s *)vdec->private;
-	if (i_only_flag & 0x100)
-		return 0;
-	if (trickmode == TRICKMODE_I)
-		dec->i_only = 0x3;
-	else if (trickmode == TRICKMODE_NONE)
-		dec->i_only = 0x0;
-	return 0;
-}
-#endif
-
 static int vavs2_local_init(struct AVS2Decoder_s *dec)
 {
 	int i;
@@ -6291,15 +6224,7 @@ TODO:FOR VERSION
 
 	if (dec->frame_dur == 0)
 		dec->frame_dur = 96000 / 24;
-#ifdef I_ONLY_SUPPORT
-	if (i_only_flag & 0x100)
-		dec->i_only = i_only_flag & 0xff;
-	else if ((unsigned long) dec->vavs2_amstream_dec_info.param
-		& 0x08)
-		dec->i_only = 0x7;
-	else
-		dec->i_only = 0x0;
-#endif
+
 	INIT_KFIFO(dec->display_q);
 	INIT_KFIFO(dec->newframe_q);
 
@@ -6357,9 +6282,7 @@ static s32 vavs2_init(struct vdec_s *vdec)
 
 		return 0;
 	}
-	hevc_enable_DMC(hw_to_vdec(dec));
 	amhevc_enable();
-
 	ret = amhevc_loadmc_ex(VFORMAT_AVS2, NULL, fw->data);
 	if (ret < 0) {
 		amhevc_disable();
@@ -6636,16 +6559,32 @@ static int amvdec_avs2_remove(struct platform_device *pdev)
 }
 
 /****************************************/
+#ifdef CONFIG_PM
+static int avs2_suspend(struct device *dev)
+{
+	amhevc_suspend(to_platform_device(dev), dev->power.power_state);
+	return 0;
+}
+
+static int avs2_resume(struct device *dev)
+{
+	amhevc_resume(to_platform_device(dev));
+	return 0;
+}
+
+static const struct dev_pm_ops avs2_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(avs2_suspend, avs2_resume)
+};
+#endif
 
 static struct platform_driver amvdec_avs2_driver = {
 	.probe = amvdec_avs2_probe,
 	.remove = amvdec_avs2_remove,
-#ifdef CONFIG_PM
-	.suspend = amhevc_suspend,
-	.resume = amhevc_resume,
-#endif
 	.driver = {
 		.name = DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &avs2_pm_ops,
+#endif
 	}
 };
 
@@ -6653,6 +6592,8 @@ static struct codec_profile_t amvdec_avs2_profile = {
 	.name = "avs2",
 	.profile = ""
 };
+
+static struct codec_profile_t amvdec_avs2_profile_mult;
 
 static unsigned char get_data_check_sum
 	(struct AVS2Decoder_s *dec, int size)
@@ -7067,7 +7008,7 @@ static void run(struct vdec_s *vdec, unsigned long mask,
 
 	vdec_enable_input(vdec);
 
-	WRITE_VREG(HEVC_DEC_STATUS_REG, AVS2_SEARCH_NEW_PIC);
+	WRITE_VREG(HEVC_DEC_STATUS_REG, AVS2_ACTION_DONE);
 
 	if (vdec_frame_based(vdec) && dec->chunk) {
 		if (debug & PRINT_FLAG_VDEC_DATA)
@@ -7294,9 +7235,7 @@ static int ammvdec_avs2_probe(struct platform_device *pdev)
 	}
 	pdata->private = dec;
 	pdata->dec_status = vavs2_dec_status;
-#ifdef I_ONLY_SUPPORT
-	pdata->set_trickmode = vavs2_set_trickmode;
-#endif
+	/* pdata->set_trickmode = set_trickmode; */
 	pdata->run_ready = run_ready;
 	pdata->run = run;
 	pdata->reset = reset;
@@ -7500,12 +7439,11 @@ static int ammvdec_avs2_remove(struct platform_device *pdev)
 static struct platform_driver ammvdec_avs2_driver = {
 	.probe = ammvdec_avs2_probe,
 	.remove = ammvdec_avs2_remove,
-#ifdef CONFIG_PM
-	.suspend = amvdec_suspend,
-	.resume = amvdec_resume,
-#endif
 	.driver = {
 		.name = MULTI_DRIVER_NAME,
+#ifdef CONFIG_PM
+		.pm = &avs2_pm_ops,
+#endif
 	}
 };
 #endif
@@ -7590,7 +7528,6 @@ static int __init amvdec_avs2_driver_init_module(void)
 	if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_SM1) {
 		amvdec_avs2_profile.profile =
 				"8k, 10bit, dwrite, compressed";
-		vcodec_profile_register(&amvdec_avs2_profile);
 	} else if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_G12A) {
 		if (vdec_is_support_4k())
 			amvdec_avs2_profile.profile =
@@ -7598,10 +7535,14 @@ static int __init amvdec_avs2_driver_init_module(void)
 		else
 			amvdec_avs2_profile.profile =
 				"10bit, dwrite, compressed";
-		vcodec_profile_register(&amvdec_avs2_profile);
 	} else {
 		amvdec_avs2_profile.name = "avs2_unsupport";
 	}
+
+	vcodec_profile_register(&amvdec_avs2_profile);
+	amvdec_avs2_profile_mult = amvdec_avs2_profile;
+	amvdec_avs2_profile_mult.name = "mavs2";
+	vcodec_profile_register(&amvdec_avs2_profile_mult);
 
 	INIT_REG_NODE_CONFIGS("media.decoder", &avs2_node,
 		"avs2", avs2_configs, CONFIG_FOR_RW);

@@ -28,7 +28,6 @@
 #include <asm/cacheflush.h>
 #include <linux/crc32.h>
 
-#include <trace/events/meson_atrace.h>
 
 #define VFRAME_BLOCK_SIZE (512 * SZ_1K)/*512 for 1080p default init.*/
 #define VFRAME_BLOCK_SIZE_4K (2 * SZ_1M) /*2M for 4K default.*/
@@ -1104,3 +1103,5 @@ u32 vdec_input_get_freed_handle(struct vdec_s *vdec)
 	return handle;
 }
 EXPORT_SYMBOL(vdec_input_get_freed_handle);
+
+

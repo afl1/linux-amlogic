@@ -17,412 +17,346 @@
 *
 * Description:
 */
-#ifndef _AML_VCODEC_DRV_H_
-#define _AML_VCODEC_DRV_H_
 
-#include <linux/platform_device.h>
-#include <linux/videodev2.h>
-#include <media/v4l2-ctrls.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-ioctl.h>
-#include <media/videobuf2-core.h>
+#define DEBUG
+#include <linux/slab.h>
+#include <linux/interrupt.h>
+#include <linux/irq.h>
+#include <linux/module.h>
+#include <linux/of_device.h>
+#include <linux/of.h>
+#include <media/v4l2-event.h>
+#include <media/v4l2-mem2mem.h>
+#include <media/videobuf2-dma-contig.h>
+#include <linux/kthread.h>
+
+#include "aml_vcodec_drv.h"
+#include "aml_vcodec_dec.h"
+#include "aml_vcodec_dec_pm.h"
+//#include "aml_vcodec_intr.h"
 #include "aml_vcodec_util.h"
+#include "aml_vcodec_vfm.h"
 
-#define AML_VCODEC_DRV_NAME	"aml_vcodec_drv"
-#define AML_VCODEC_DEC_NAME	"aml-vcodec-dec"
-#define AML_VCODEC_ENC_NAME	"aml-vcodec-enc"
-#define AML_PLATFORM_STR	"platform:amlogic"
+#define VDEC_HW_ACTIVE	0x10
+#define VDEC_IRQ_CFG	0x11
+#define VDEC_IRQ_CLR	0x10
+#define VDEC_IRQ_CFG_REG	0xa4
 
-#define AML_VCODEC_MAX_PLANES	3
-#define AML_V4L2_BENCHMARK	0
-#define WAIT_INTR_TIMEOUT_MS	1000
+static int fops_vcodec_open(struct file *file)
+{
+	struct aml_vcodec_dev *dev = video_drvdata(file);
+	struct aml_vcodec_ctx *ctx = NULL;
+	struct aml_video_dec_buf *aml_buf = NULL;
+	int ret = 0;
+	struct vb2_queue *src_vq;
 
-/**
- * enum aml_hw_reg_idx - AML hw register base index
- */
-enum aml_hw_reg_idx {
-	VDEC_SYS,
-	VDEC_MISC,
-	VDEC_LD,
-	VDEC_TOP,
-	VDEC_CM,
-	VDEC_AD,
-	VDEC_AV,
-	VDEC_PP,
-	VDEC_HWD,
-	VDEC_HWQ,
-	VDEC_HWB,
-	VDEC_HWG,
-	NUM_MAX_VDEC_REG_BASE,
-	/* h264 encoder */
-	VENC_SYS = NUM_MAX_VDEC_REG_BASE,
-	/* vp8 encoder */
-	VENC_LT_SYS,
-	NUM_MAX_VCODEC_REG_BASE
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+	aml_buf = kzalloc(sizeof(*aml_buf), GFP_KERNEL);
+	if (!aml_buf) {
+		kfree(ctx);
+		return -ENOMEM;
+	}
+
+	mutex_lock(&dev->dev_mutex);
+	ctx->empty_flush_buf = aml_buf;
+	ctx->id = dev->id_counter++;
+	v4l2_fh_init(&ctx->fh, video_devdata(file));
+	file->private_data = &ctx->fh;
+	v4l2_fh_add(&ctx->fh);
+	INIT_LIST_HEAD(&ctx->list);
+	INIT_LIST_HEAD(&ctx->capture_list);
+	INIT_LIST_HEAD(&ctx->vdec_thread_list);
+	dev->filp = file;
+	ctx->dev = dev;
+	init_waitqueue_head(&ctx->queue);
+	mutex_init(&ctx->state_lock);
+	mutex_init(&ctx->lock);
+	init_waitqueue_head(&ctx->wq);
+
+	ctx->type = AML_INST_DECODER;
+	ret = aml_vcodec_dec_ctrls_setup(ctx);
+	if (ret) {
+		aml_v4l2_err("Failed to setup vcodec controls");
+		goto err_ctrls_setup;
+	}
+	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev_dec, ctx,
+		&aml_vcodec_dec_queue_init);
+	if (IS_ERR((__force void *)ctx->m2m_ctx)) {
+		ret = PTR_ERR((__force void *)ctx->m2m_ctx);
+		aml_v4l2_err("Failed to v4l2_m2m_ctx_init() (%d)", ret);
+		goto err_m2m_ctx_init;
+	}
+	src_vq = v4l2_m2m_get_vq(ctx->m2m_ctx,
+				V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	ctx->empty_flush_buf->vb.vb2_buf.vb2_queue = src_vq;
+	ctx->empty_flush_buf->lastframe = true;
+	aml_vcodec_dec_set_default_params(ctx);
+
+	ret = aml_thread_start(ctx, try_to_capture, AML_THREAD_CAPTURE, "cap");
+	if (ret) {
+		aml_v4l2_err("Failed to creat capture thread.");
+		goto err_creat_thread;
+	}
+
+	list_add(&ctx->list, &dev->ctx_list);
+
+	mutex_unlock(&dev->dev_mutex);
+	pr_info("[%d] %s decoder\n", ctx->id, dev_name(&dev->plat_dev->dev));
+
+	return ret;
+
+	/* Deinit when failure occurred */
+err_creat_thread:
+	v4l2_m2m_ctx_release(ctx->m2m_ctx);
+err_m2m_ctx_init:
+	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
+err_ctrls_setup:
+	v4l2_fh_del(&ctx->fh);
+	v4l2_fh_exit(&ctx->fh);
+	kfree(ctx->empty_flush_buf);
+	kfree(ctx);
+	mutex_unlock(&dev->dev_mutex);
+
+	return ret;
+}
+
+static int fops_vcodec_release(struct file *file)
+{
+	struct aml_vcodec_dev *dev = video_drvdata(file);
+	struct aml_vcodec_ctx *ctx = fh_to_ctx(file->private_data);
+
+	pr_info("[%d] release decoder\n", ctx->id);
+	mutex_lock(&dev->dev_mutex);
+
+	/*
+	 * Call v4l2_m2m_ctx_release before aml_vcodec_dec_release. First, it
+	 * makes sure the worker thread is not running after vdec_if_deinit.
+	 * Second, the decoder will be flushed and all the buffers will be
+	 * returned in stop_streaming.
+	 */
+	aml_vcodec_dec_release(ctx);
+	v4l2_m2m_ctx_release(ctx->m2m_ctx);
+
+	v4l2_fh_del(&ctx->fh);
+	v4l2_fh_exit(&ctx->fh);
+	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
+
+	aml_thread_stop(ctx);
+
+	list_del_init(&ctx->list);
+	kfree(ctx->empty_flush_buf);
+	kfree(ctx);
+	mutex_unlock(&dev->dev_mutex);
+	return 0;
+}
+
+static const struct v4l2_file_operations aml_vcodec_fops = {
+	.owner		= THIS_MODULE,
+	.open		= fops_vcodec_open,
+	.release	= fops_vcodec_release,
+	.poll		= v4l2_m2m_fop_poll,
+	.unlocked_ioctl	= video_ioctl2,
+	.mmap		= v4l2_m2m_fop_mmap,
 };
 
-/**
- * enum aml_instance_type - The type of an AML Vcodec instance.
- */
-enum aml_instance_type {
-	AML_INST_DECODER		= 0,
-	AML_INST_ENCODER		= 1,
-};
-
-/**
- * enum aml_instance_state - The state of an AML Vcodec instance.
- * @AML_STATE_IDLE	- default state when instance is created
- * @AML_STATE_INIT	- vcodec instance is initialized
- * @AML_STATE_PROBE	- vdec/venc had sps/pps header parsed/encoded
- * @AML_STATE_ACTIVE	- vdec is ready for work.
- * @AML_STATE_FLUSHING	- vdec is flushing. Only used by decoder
- * @AML_STATE_FLUSHED	- decoder has transacted the last frame.
- * @AML_STATE_RESET	- decoder has be reset after flush.
- * @AML_STATE_ABORT	- vcodec should be aborted
- */
-enum aml_instance_state {
-	AML_STATE_IDLE,
-	AML_STATE_INIT,
-	AML_STATE_PROBE,
-	AML_STATE_READY,
-	AML_STATE_ACTIVE,
-	AML_STATE_FLUSHING,
-	AML_STATE_FLUSHED,
-	AML_STATE_RESET,
-	AML_STATE_ABORT,
-};
-
-/**
- * struct aml_encode_param - General encoding parameters type
- */
-enum aml_encode_param {
-	AML_ENCODE_PARAM_NONE = 0,
-	AML_ENCODE_PARAM_BITRATE = (1 << 0),
-	AML_ENCODE_PARAM_FRAMERATE = (1 << 1),
-	AML_ENCODE_PARAM_INTRA_PERIOD = (1 << 2),
-	AML_ENCODE_PARAM_FORCE_INTRA = (1 << 3),
-	AML_ENCODE_PARAM_GOP_SIZE = (1 << 4),
-};
-
-enum aml_fmt_type {
-	AML_FMT_DEC = 0,
-	AML_FMT_ENC = 1,
-	AML_FMT_FRAME = 2,
-};
-
-/**
- * struct aml_video_fmt - Structure used to store information about pixelformats
- */
-struct aml_video_fmt {
-	u32	fourcc;
-	enum aml_fmt_type	type;
-	u32	num_planes;
-};
-
-/**
- * struct aml_codec_framesizes - Structure used to store information about
- *							framesizes
- */
-struct aml_codec_framesizes {
-	u32	fourcc;
-	struct	v4l2_frmsize_stepwise	stepwise;
-};
-
-/**
- * struct aml_q_type - Type of queue
- */
-enum aml_q_type {
-	AML_Q_DATA_SRC = 0,
-	AML_Q_DATA_DST = 1,
-};
-
-/**
- * struct aml_q_data - Structure used to store information about queue
- */
-struct aml_q_data {
-	unsigned int	visible_width;
-	unsigned int	visible_height;
-	unsigned int	coded_width;
-	unsigned int	coded_height;
-	enum v4l2_field	field;
-	unsigned int	bytesperline[AML_VCODEC_MAX_PLANES];
-	unsigned int	sizeimage[AML_VCODEC_MAX_PLANES];
-	struct aml_video_fmt	*fmt;
-};
-
-/**
- * struct aml_enc_params - General encoding parameters
- * @bitrate: target bitrate in bits per second
- * @num_b_frame: number of b frames between p-frame
- * @rc_frame: frame based rate control
- * @rc_mb: macroblock based rate control
- * @seq_hdr_mode: H.264 sequence header is encoded separately or joined
- *		  with the first frame
- * @intra_period: I frame period
- * @gop_size: group of picture size, it's used as the intra frame period
- * @framerate_num: frame rate numerator. ex: framerate_num=30 and
- *		   framerate_denom=1 menas FPS is 30
- * @framerate_denom: frame rate denominator. ex: framerate_num=30 and
- *		     framerate_denom=1 menas FPS is 30
- * @h264_max_qp: Max value for H.264 quantization parameter
- * @h264_profile: V4L2 defined H.264 profile
- * @h264_level: V4L2 defined H.264 level
- * @force_intra: force/insert intra frame
- */
-struct aml_enc_params {
-	unsigned int	bitrate;
-	unsigned int	num_b_frame;
-	unsigned int	rc_frame;
-	unsigned int	rc_mb;
-	unsigned int	seq_hdr_mode;
-	unsigned int	intra_period;
-	unsigned int	gop_size;
-	unsigned int	framerate_num;
-	unsigned int	framerate_denom;
-	unsigned int	h264_max_qp;
-	unsigned int	h264_profile;
-	unsigned int	h264_level;
-	unsigned int	force_intra;
-};
-
-/**
- * struct aml_vcodec_pm - Power management data structure
- */
-struct aml_vcodec_pm {
-	struct clk	*vdec_bus_clk_src;
-	struct clk	*vencpll;
-
-	struct clk	*vcodecpll;
-	struct clk	*univpll_d2;
-	struct clk	*clk_cci400_sel;
-	struct clk	*vdecpll;
-	struct clk	*vdec_sel;
-	struct clk	*vencpll_d2;
-	struct clk	*venc_sel;
-	struct clk	*univpll1_d2;
-	struct clk	*venc_lt_sel;
-	struct device	*larbvdec;
-	struct device	*larbvenc;
-	struct device	*larbvenclt;
-	struct device	*dev;
-	struct aml_vcodec_dev	*amldev;
-};
-
-/**
- * struct vdec_pic_info  - picture size information
- * @visible_width: picture width
- * @visible_height: picture height
- * @coded_width: picture buffer width (64 aligned up from pic_w)
- * @coded_height: picture buffer heiht (64 aligned up from pic_h)
- * @y_bs_sz: Y bitstream size
- * @c_bs_sz: CbCr bitstream size
- * @y_len_sz: additional size required to store decompress information for y
- *		plane
- * @c_len_sz: additional size required to store decompress information for cbcr
- *		plane
- * E.g. suppose picture size is 176x144,
- *      buffer size will be aligned to 176x160.
- */
-struct vdec_pic_info {
-	unsigned int visible_width;
-	unsigned int visible_height;
-	unsigned int coded_width;
-	unsigned int coded_height;
-	unsigned int y_bs_sz;
-	unsigned int c_bs_sz;
-	unsigned int y_len_sz;
-	unsigned int c_len_sz;
-};
-
-enum aml_thread_type {
-	AML_THREAD_OUTPUT,
-	AML_THREAD_CAPTURE,
-};
-
-typedef void (*aml_thread_func)(struct aml_vcodec_ctx *ctx);
-
-struct aml_vdec_thread {
-	struct list_head node;
-	spinlock_t lock;
-	struct semaphore sem;
-	struct task_struct *task;
-	enum aml_thread_type type;
-	void *priv;
-	int stop;
-
-	aml_thread_func func;
-};
-
-/**
- * struct aml_vcodec_ctx - Context (instance) private data.
- *
- * @type: type of the instance - decoder or encoder
- * @dev: pointer to the aml_vcodec_dev of the device
- * @list: link to ctx_list of aml_vcodec_dev
- * @fh: struct v4l2_fh
- * @m2m_ctx: pointer to the v4l2_m2m_ctx of the context
- * @q_data: store information of input and output queue
- *	    of the context
- * @id: index of the context that this structure describes
- * @state: state of the context
- * @param_change: indicate encode parameter type
- * @enc_params: encoding parameters
- * @dec_if: hooked decoder driver interface
- * @enc_if: hoooked encoder driver interface
- * @drv_handle: driver handle for specific decode/encode instance
- *
- * @picinfo: store picture info after header parsing
- * @dpb_size: store dpb count after header parsing
- * @int_cond: variable used by the waitqueue
- * @int_type: type of the last interrupt
- * @queue: waitqueue that can be used to wait for this context to
- *	   finish
- * @irq_status: irq status
- *
- * @ctrl_hdl: handler for v4l2 framework
- * @decode_work: worker for the decoding
- * @encode_work: worker for the encoding
- * @last_decoded_picinfo: pic information get from latest decode
- * @empty_flush_buf: a fake size-0 capture buffer that indicates flush
- *
- * @colorspace: enum v4l2_colorspace; supplemental to pixelformat
- * @ycbcr_enc: enum v4l2_ycbcr_encoding, Y'CbCr encoding
- * @quantization: enum v4l2_quantization, colorspace quantization
- * @xfer_func: enum v4l2_xfer_func, colorspace transfer function
- * @lock: protect variables accessed by V4L2 threads and worker thread such as
- *	  aml_video_dec_buf.
- */
-struct aml_vcodec_ctx {
-	enum aml_instance_type type;
+static int aml_vcodec_probe(struct platform_device *pdev)
+{
 	struct aml_vcodec_dev *dev;
-	struct list_head list;
-
-	struct v4l2_fh fh;
-	struct v4l2_m2m_ctx *m2m_ctx;
-	struct aml_vdec_adapt *ada_ctx;
-	struct aml_q_data q_data[2];
-	int id;
-	struct mutex state_lock;
-	enum aml_instance_state state;
-	enum aml_encode_param param_change;
-	struct aml_enc_params enc_params;
-
-	const struct vdec_common_if *dec_if;
-	const struct venc_common_if *enc_if;
-	unsigned long drv_handle;
-
-	struct vdec_pic_info picinfo;
-	int dpb_size;
-
-	int int_cond;
-	int int_type;
-	wait_queue_head_t queue;
-	unsigned int irq_status;
-
-	struct v4l2_ctrl_handler ctrl_hdl;
-	struct work_struct decode_work;
-	struct work_struct encode_work;
-	struct work_struct reset_work;
-	struct vdec_pic_info last_decoded_picinfo;
-	struct aml_video_dec_buf *empty_flush_buf;
-
-	enum v4l2_colorspace colorspace;
-	enum v4l2_ycbcr_encoding ycbcr_enc;
-	enum v4l2_quantization quantization;
-	enum v4l2_xfer_func xfer_func;
-
-	int decoded_frame_cnt;
-	struct mutex lock;
-	wait_queue_head_t wq;
-	bool has_receive_eos;
-	struct list_head capture_list;
-	struct list_head vdec_thread_list;
-};
-
-/**
- * struct aml_vcodec_dev - driver data
- * @v4l2_dev: V4L2 device to register video devices for.
- * @vfd_dec: Video device for decoder
- * @vfd_enc: Video device for encoder.
- *
- * @m2m_dev_dec: m2m device for decoder
- * @m2m_dev_enc: m2m device for encoder.
- * @plat_dev: platform device
- * @vpu_plat_dev: aml vpu platform device
- * @alloc_ctx: VB2 allocator context
- *	       (for allocations without kernel mapping).
- * @ctx_list: list of struct aml_vcodec_ctx
- * @irqlock: protect data access by irq handler and work thread
- * @curr_ctx: The context that is waiting for codec hardware
- *
- * @reg_base: Mapped address of AML Vcodec registers.
- *
- * @id_counter: used to identify current opened instance
- *
- * @encode_workqueue: encode work queue
- *
- * @int_cond: used to identify interrupt condition happen
- * @int_type: used to identify what kind of interrupt condition happen
- * @dev_mutex: video_device lock
- * @queue: waitqueue for waiting for completion of device commands
- *
- * @dec_irq: decoder irq resource
- * @enc_irq: h264 encoder irq resource
- * @enc_lt_irq: vp8 encoder irq resource
- *
- * @dec_mutex: decoder hardware lock
- * @enc_mutex: encoder hardware lock.
- *
- * @pm: power management control
- * @dec_capability: used to identify decode capability, ex: 4k
- * @enc_capability: used to identify encode capability
- */
-struct aml_vcodec_dev {
-	struct v4l2_device v4l2_dev;
 	struct video_device *vfd_dec;
-	struct video_device *vfd_enc;
-	struct file *filp;
+	int ret = 0;
 
-	struct v4l2_m2m_dev *m2m_dev_dec;
-	struct v4l2_m2m_dev *m2m_dev_enc;
-	struct platform_device *plat_dev;
-	struct platform_device *vpu_plat_dev;//??
-	struct vb2_alloc_ctx *alloc_ctx;//??
-	struct list_head ctx_list;
-	spinlock_t irqlock;
-	struct aml_vcodec_ctx *curr_ctx;
-	void __iomem *reg_base[NUM_MAX_VCODEC_REG_BASE];
+	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return -ENOMEM;
 
-	unsigned long id_counter;
+	INIT_LIST_HEAD(&dev->ctx_list);
+	dev->plat_dev = pdev;
 
-	struct workqueue_struct *decode_workqueue;
-	struct workqueue_struct *encode_workqueue;
-	struct workqueue_struct *reset_workqueue;
-	int int_cond;
-	int int_type;
-	struct mutex dev_mutex;
-	wait_queue_head_t queue;
+	mutex_init(&dev->dec_mutex);
+	mutex_init(&dev->dev_mutex);
+	spin_lock_init(&dev->irqlock);
 
-	int dec_irq;
-	int enc_irq;
-	int enc_lt_irq;
+	snprintf(dev->v4l2_dev.name, sizeof(dev->v4l2_dev.name), "%s",
+		"[/AML_V4L2_VDEC]");
 
-	struct mutex dec_mutex;
-	struct mutex enc_mutex;
+	ret = v4l2_device_register(&pdev->dev, &dev->v4l2_dev);
+	if (ret) {
+		aml_v4l2_err("v4l2_device_register err=%d", ret);
+		goto err_res;
+	}
 
-	struct aml_vcodec_pm pm;
-	unsigned int dec_capability;
-	unsigned int enc_capability;
+	init_waitqueue_head(&dev->queue);
+
+	vfd_dec = video_device_alloc();
+	if (!vfd_dec) {
+		aml_v4l2_err("Failed to allocate video device");
+		ret = -ENOMEM;
+		goto err_dec_alloc;
+	}
+
+	vfd_dec->fops		= &aml_vcodec_fops;
+	vfd_dec->ioctl_ops	= &aml_vdec_ioctl_ops;
+	vfd_dec->release	= video_device_release;
+	vfd_dec->lock		= &dev->dev_mutex;
+	vfd_dec->v4l2_dev	= &dev->v4l2_dev;
+	vfd_dec->vfl_dir	= VFL_DIR_M2M;
+	vfd_dec->device_caps	= V4L2_CAP_VIDEO_M2M_MPLANE |
+				V4L2_CAP_STREAMING;
+
+	snprintf(vfd_dec->name, sizeof(vfd_dec->name), "%s",
+		AML_VCODEC_DEC_NAME);
+	video_set_drvdata(vfd_dec, dev);
+	dev->vfd_dec = vfd_dec;
+	platform_set_drvdata(pdev, dev);
+
+	dev->m2m_dev_dec = v4l2_m2m_init(&aml_vdec_m2m_ops);
+	if (IS_ERR((__force void *)dev->m2m_dev_dec)) {
+		aml_v4l2_err("Failed to init mem2mem dec device");
+		ret = PTR_ERR((__force void *)dev->m2m_dev_dec);
+		goto err_dec_mem_init;
+	}
+
+	dev->decode_workqueue =
+		alloc_ordered_workqueue(AML_VCODEC_DEC_NAME,
+			WQ_MEM_RECLAIM | WQ_FREEZABLE);
+	if (!dev->decode_workqueue) {
+		aml_v4l2_err("Failed to create decode workqueue");
+		ret = -EINVAL;
+		goto err_event_workq;
+	}
+
+	dev->reset_workqueue =
+		alloc_ordered_workqueue("aml-vcodec-reset",
+			WQ_MEM_RECLAIM | WQ_FREEZABLE);
+	if (!dev->reset_workqueue) {
+		aml_v4l2_err("Failed to create decode workqueue");
+		ret = -EINVAL;
+		destroy_workqueue(dev->decode_workqueue);
+		goto err_event_workq;
+	}
+
+	//dev_set_name(&vdev->dev, "%s%d", name_base, vdev->num);
+
+	ret = video_register_device(vfd_dec, VFL_TYPE_GRABBER, 26);
+	if (ret) {
+		pr_err("Failed to register video device\n");
+		goto err_dec_reg;
+	}
+
+	pr_info("decoder registered as /dev/video%d\n", vfd_dec->num);
+
+	return 0;
+
+err_dec_reg:
+	destroy_workqueue(dev->reset_workqueue);
+	destroy_workqueue(dev->decode_workqueue);
+err_event_workq:
+	v4l2_m2m_release(dev->m2m_dev_dec);
+err_dec_mem_init:
+	video_unregister_device(vfd_dec);
+err_dec_alloc:
+	v4l2_device_unregister(&dev->v4l2_dev);
+err_res:
+
+	return ret;
+}
+
+static const struct of_device_id aml_vcodec_match[] = {
+	{.compatible = "amlogic, vcodec-dec",},
+	{},
 };
 
-static inline struct aml_vcodec_ctx *fh_to_ctx(struct v4l2_fh *fh)
+MODULE_DEVICE_TABLE(of, aml_vcodec_match);
+
+static int aml_vcodec_dec_remove(struct platform_device *pdev)
 {
-	return container_of(fh, struct aml_vcodec_ctx, fh);
+	struct aml_vcodec_dev *dev = platform_get_drvdata(pdev);
+
+	flush_workqueue(dev->reset_workqueue);
+	destroy_workqueue(dev->reset_workqueue);
+
+	flush_workqueue(dev->decode_workqueue);
+	destroy_workqueue(dev->decode_workqueue);
+
+	if (dev->m2m_dev_dec)
+		v4l2_m2m_release(dev->m2m_dev_dec);
+
+	if (dev->vfd_dec)
+		video_unregister_device(dev->vfd_dec);
+
+	v4l2_device_unregister(&dev->v4l2_dev);
+
+	return 0;
 }
 
-static inline struct aml_vcodec_ctx *ctrl_to_ctx(struct v4l2_ctrl *ctrl)
+/*static void aml_vcodec_dev_release(struct device *dev)
 {
-	return container_of(ctrl->handler, struct aml_vcodec_ctx, ctrl_hdl);
+}*/
+
+static struct platform_driver aml_vcodec_dec_driver = {
+	.probe	= aml_vcodec_probe,
+	.remove	= aml_vcodec_dec_remove,
+	.driver	= {
+		.name	= AML_VCODEC_DEC_NAME,
+		.of_match_table = aml_vcodec_match,
+	},
+};
+
+/*
+static struct platform_device aml_vcodec_dec_device = {
+	.name		= AML_VCODEC_DEC_NAME,
+	.dev.release	= aml_vcodec_dev_release,
+};*/
+
+module_platform_driver(aml_vcodec_dec_driver);
+
+/*
+static int __init amvdec_ports_init(void)
+{
+	int ret;
+
+	ret = platform_device_register(&aml_vcodec_dec_device);
+	if (ret)
+		return ret;
+
+	ret = platform_driver_register(&aml_vcodec_dec_driver);
+	if (ret)
+		platform_device_unregister(&aml_vcodec_dec_device);
+
+	return ret;
 }
 
-#endif /* _AML_VCODEC_DRV_H_ */
+static void __exit amvdec_ports_exit(void)
+{
+	platform_driver_unregister(&aml_vcodec_dec_driver);
+	platform_device_unregister(&aml_vcodec_dec_device);
+}
+
+module_init(amvdec_ports_init);
+module_exit(amvdec_ports_exit);
+*/
+
+module_param(aml_v4l2_dbg_level, int, 0644);
+module_param(aml_vcodec_dbg, bool, 0644);
+
+bool aml_set_vfm_enable;
+EXPORT_SYMBOL(aml_set_vfm_enable);
+
+int aml_set_vfm_path;
+EXPORT_SYMBOL(aml_set_vfm_path);
+
+bool aml_set_vdec_type_enable;
+EXPORT_SYMBOL(aml_set_vdec_type_enable);
+
+int aml_set_vdec_type;
+EXPORT_SYMBOL(aml_set_vdec_type);
+
+module_param(aml_set_vdec_type_enable, bool, 0644);
+module_param(aml_set_vdec_type, int, 0644);
+module_param(aml_set_vfm_enable, bool, 0644);
+module_param(aml_set_vfm_path, int, 0644);
+
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("AML video codec V4L2 decoder driver");

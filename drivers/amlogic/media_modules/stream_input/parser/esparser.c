@@ -154,7 +154,7 @@ static inline u32 buf_wp(u32 type)
 }
 
 static ssize_t _esparser_write(const char __user *buf,
-		size_t count, struct stream_buf_s *stbuf, int isphybuf)
+		size_t count, u32 type, int isphybuf)
 {
 	size_t r = count;
 	const char __user *p = buf;
@@ -164,7 +164,6 @@ static ssize_t _esparser_write(const char __user *buf,
 	int ret;
 	u32 wp;
 	dma_addr_t dma_addr = 0;
-	u32 type = stbuf->type;
 
 	if (type == BUF_TYPE_HEVC)
 		parser_type = PARSER_VIDEO;
@@ -249,20 +248,18 @@ static ssize_t _esparser_write(const char __user *buf,
 	else if (type == BUF_TYPE_AUDIO)
 		audio_data_parsed += len;
 
-	threadrw_update_buffer_level(stbuf, len);
 	return len;
 }
 
 static ssize_t _esparser_write_s(const char __user *buf,
-			size_t count, struct stream_buf_s *stbuf)
+			size_t count, u32 type)
 {
 	size_t r = count;
 	const char __user *p = buf;
 	u32 len = 0;
 	int ret;
 	u32 wp, buf_start, buf_end;
-	dma_addr_t buf_wp_map;
-	u32 type = stbuf->type;
+	void *vaddr = NULL;
 
 	if (type != BUF_TYPE_AUDIO)
 		BUG();
@@ -272,24 +269,20 @@ static ssize_t _esparser_write_s(const char __user *buf,
 	/*pr_info("write wp 0x%x, count %d, start 0x%x, end 0x%x\n",
 	*		 wp, (u32)count, buf_start, buf_end);*/
 	if (wp + count > buf_end) {
-		ret = copy_from_user(codec_mm_phys_to_virt(wp),
-				 p, buf_end - wp);
+		vaddr = codec_mm_phys_to_virt(wp);
+		ret = copy_from_user(vaddr, p, buf_end - wp);
 		if (ret > 0) {
 			len +=  buf_end - wp - ret;
-			buf_wp_map = dma_map_single(amports_get_dma_device(),
-				codec_mm_phys_to_virt(wp), len, DMA_TO_DEVICE);
+			codec_mm_dma_flush(vaddr, len, DMA_TO_DEVICE);
 			wp += len;
 			pr_info("copy from user not finished\n");
-			dma_unmap_single(NULL, buf_wp_map, len, DMA_TO_DEVICE);
 			set_buf_wp(type, wp);
 			goto end_write;
 		} else if (ret == 0) {
 			len += buf_end - wp;
-			buf_wp_map = dma_map_single(amports_get_dma_device(),
-				codec_mm_phys_to_virt(wp), len, DMA_TO_DEVICE);
+			codec_mm_dma_flush(vaddr, len, DMA_TO_DEVICE);
 			wp = buf_start;
 			r = count - len;
-			dma_unmap_single(NULL, buf_wp_map, len, DMA_TO_DEVICE);
 			set_buf_wp(type, wp);
 		} else {
 			pr_info("copy from user failed 1\n");
@@ -298,16 +291,15 @@ static ssize_t _esparser_write_s(const char __user *buf,
 			return -EAGAIN;
 		}
 	}
-	ret = copy_from_user(codec_mm_phys_to_virt(wp), p + len, r);
+
+	vaddr = codec_mm_phys_to_virt(wp);
+	ret = copy_from_user(vaddr, p + len, r);
 	if (ret >= 0) {
 		len += r - ret;
-		buf_wp_map = dma_map_single(amports_get_dma_device(),
-			 codec_mm_phys_to_virt(wp), r - ret, DMA_TO_DEVICE);
-
+		codec_mm_dma_flush(vaddr, r - ret, DMA_TO_DEVICE);
 		if (ret > 0)
 			pr_info("copy from user not finished 2\n");
 		wp += r - ret;
-		dma_unmap_single(NULL, buf_wp_map, r - ret, DMA_TO_DEVICE);
 		set_buf_wp(type, wp);
 	} else {
 		pr_info("copy from user failed 2\n");
@@ -316,10 +308,7 @@ static ssize_t _esparser_write_s(const char __user *buf,
 
 end_write:
 	if (type == BUF_TYPE_AUDIO)
-	{
 		audio_data_parsed += len;
-		threadrw_update_buffer_level(stbuf, len);
-	}
 
 	return len;
 }
@@ -356,11 +345,7 @@ s32 es_vpts_checkin(struct stream_buf_s *buf, u32 pts)
 		return 0;
 	}
 #endif
-	u32 passed = 0;
-
-	mutex_lock(&esparser_mutex);
-	passed = video_data_parsed + threadrw_buffer_level(buf);
-	mutex_unlock(&esparser_mutex);
+	u32 passed = video_data_parsed + threadrw_buffer_level(buf);
 
 	return pts_checkin_offset(PTS_TYPE_VIDEO, passed, pts);
 
@@ -376,10 +361,7 @@ s32 es_apts_checkin(struct stream_buf_s *buf, u32 pts)
 		return 0;
 	}
 #endif
-	u32 passed = 0;
-	mutex_lock(&esparser_mutex);
-	passed = audio_data_parsed + threadrw_buffer_level(buf);
-	mutex_unlock(&esparser_mutex);
+	u32 passed = audio_data_parsed + threadrw_buffer_level(buf);
 
 	return pts_checkin_offset(PTS_TYPE_AUDIO, passed, pts);
 }
@@ -739,7 +721,6 @@ ssize_t drm_write(struct file *file, struct stream_buf_s *stbuf,
 	s32 r;
 	u32 len;
 	u32 realcount, totalcount;
-	u32 re_count = count;
 	u32 havewritebytes = 0;
 	u32 leftcount = 0;
 
@@ -819,13 +800,12 @@ ssize_t drm_write(struct file *file, struct stream_buf_s *stbuf,
 
 		if (stbuf->type != BUF_TYPE_AUDIO)
 			r = _esparser_write((const char __user *)realbuf, len,
-					stbuf, isphybuf);
+					stbuf->type, isphybuf);
 		else
 			r = _esparser_write_s((const char __user *)realbuf, len,
-					stbuf);
+					stbuf->type);
 		if (r < 0) {
 			pr_info("drm_write _esparser_write failed [%d]\n", r);
-			mutex_unlock(&esparser_mutex);
 			return r;
 		}
 		havewritebytes += r;
@@ -848,7 +828,7 @@ ssize_t drm_write(struct file *file, struct stream_buf_s *stbuf,
 		mutex_unlock(&esparser_mutex);
 	}
 
-	return re_count;
+	return havewritebytes;
 }
 EXPORT_SYMBOL(drm_write);
 
@@ -895,9 +875,9 @@ ssize_t esparser_write_ex(struct file *file,
 	mutex_lock(&esparser_mutex);
 
 	if (stbuf->type == BUF_TYPE_AUDIO)
-		r = _esparser_write_s(buf, len, stbuf);
+		r = _esparser_write_s(buf, len, stbuf->type);
 	else
-		r = _esparser_write(buf, len, stbuf, flags & 1);
+		r = _esparser_write(buf, len, stbuf->type, flags & 1);
 
 	mutex_unlock(&esparser_mutex);
 
