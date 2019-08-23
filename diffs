@@ -1,0 +1,2907 @@
+diff --git a/arch/arm64/boot/dts/amlogic/Makefile b/arch/arm64/boot/dts/amlogic/Makefile
+index 6057533126f3..28bf22587a60 100644
+--- a/arch/arm64/boot/dts/amlogic/Makefile
++++ b/arch/arm64/boot/dts/amlogic/Makefile
+@@ -1,13 +1,9 @@
+-ifndef CONFIG_ARCH_MESON64_ODROID_COMMON
+-dtb-y += g12a_s905d2_skt.dtb
+-dtb-y += g12a_s905d2_skt_buildroot.dtb
+-dtb-y += g12a_s905d2_u200.dtb
+-dtb-y += g12a_s905d2_u200_buildroot.dtb
+-dtb-y += g12a_s905d2_u200_drm_buildroot.dtb
+-dtb-y += g12b_a311d_w400.dtb
+-dtb-y += g12b_a311d_w400_buildroot.dtb
+-endif
+-dtb-$(CONFIG_ARCH_MESON64_ODROIDC3) += meson64_odroidc3.dtb
+-dtb-$(CONFIG_ARCH_MESON64_ODROIDN2) += meson64_odroidn2.dtb
+-dtb-$(CONFIG_ARCH_MESON64_ODROIDN2) += meson64_odroidn2_drm.dtb
+-dtb-$(CONFIG_ARCH_MESON64_ODROIDN2) += meson64_odroidn2_spibios.dtb
++dtb-y += g12a_s905x2_2g.dtb
++dtb-y += g12a_s905x2_2g_1gbit.dtb
++dtb-y += g12a_s905x2_4g.dtb
++dtb-y += g12a_s905x2_4g_1gbit.dtb
++dtb-y += g12b_s922x_beelink_gt_king.dtb
++dtb-y += g12b_s922x_beelink_gt_king_rev_a.dtb
++dtb-y += g12b_a311d_khadas_vim3.dtb
++dtb-y += g12b_s922x_odroid_n2.dtb
++dtb-y += g12b_s922x_odroid_n2_dvb.dtb
+
+
+
+
+
+
+
+
+
+
+diff --git a/arch/arm64/boot/dts/amlogic/coreelec_common.dtsi b/arch/arm64/boot/dts/amlogic/coreelec_common.dtsi
+new file mode 100644
+index 000000000000..2a4a87d806a7
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/coreelec_common.dtsi
+@@ -0,0 +1,111 @@
++/{
++	coreelec;
++	/delete-property/ amlogic-dt-id;
++
++	chosen { };
++
++	reserved-memory {
++		linux,meson-fb {
++			alloc-ranges = <0x0 0x77800000 0x0 0x800000>;
++		};
++		linux,vdin0_cma {
++			status = "disabled";
++		};
++		linux,vdin1_cma {
++			status = "disabled";
++		};
++		linux,isp_cma {
++			status = "disabled";
++		};
++		linux,adapt_cma {
++			status = "disabled";
++		};
++		linux,gdc_cma {
++			status = "disabled";
++		};
++	};
++
++	/delete-node/ partitions;
++	partitions: partitions {
++		parts = <3>;
++		part-0 = <&bootloader>;
++		part-1 = <&env>;
++		part-2 = <&dtbo>;
++
++		bootloader:bootloader {
++			pname = "bootloader";
++			size = <0x0 0x400000>;
++			mask = <1>;
++		};
++		env:env {
++			pname = "env";
++			size = <0x0 0x800000>;
++			mask = <1>;
++		};
++		dtbo:dtbo {
++			pname = "dtbo";
++			size = <0x0 0x800000>;
++			mask = <1>;
++		};
++	};
++
++	/delete-node/ rc@0xff808040;
++	/delete-node/ custom_maps;
++	meson-ir {
++		compatible = "amlogic,meson6-ir";
++		/* Multi-format IR controller */
++		reg = <0x0 0xff808040 0x0 0x44>;
++		interrupts = <0 196 1>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&remote_pins>;
++		pulse-inverted;
++		status = "ok";
++	};
++	meson-remote {
++		compatible = "amlogic, aml_remote";
++		dev_name = "meson-remote";
++		reg = <0x0 0xff808040 0x00 0x44>, /*Multi-format IR controller*/
++			<0x0 0xff808000 0x00 0x20>; /*Legacy IR controller*/
++		status = "disabled";
++		protocol = <REMOTE_TYPE_NEC>;
++		led_blink = <1>;
++		led_blink_frq = <100>;
++		interrupts = <0 196 1>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&remote_pins>;
++		max_frame_time = <200>; /*set software decoder max frame time*/
++	};
++
++	openvfd {
++		compatible = "open,vfd";
++		dev_name = "openvfd";
++		status = "okay";
++	};
++};
++
++&i2c2 {
++	status = "disabled";
++};
++
++&meson_fb {
++	mem_size = <0x00800000 0x4b80000 0x100000 0x100000 0x800000>;
++	4k2k_fb = <1>;
++};
++
++&i2c0 {
++	status = "disabled";
++};
++
++&vdin0 {
++	status = "disabled";
++};
++
++&vdin1 {
++	status = "disabled";
++};
++
++/delete-node/ &nand;
++
++&pcie_A {
++	status = "disabled";
++};
+diff --git a/arch/arm64/boot/dts/amlogic/coreelec_g12a.dtsi b/arch/arm64/boot/dts/amlogic/coreelec_g12a.dtsi
+new file mode 100644
+index 000000000000..56f25b360fc7
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/coreelec_g12a.dtsi
+@@ -0,0 +1,65 @@
++#include "g12a_s905x2_u211_buildroot.dts"
++#include "coreelec_common.dtsi"
++
++/{
++	/delete-node/ auge_sound;
++	auge_sound {
++		compatible = "amlogic, g12a-sound-card";
++		aml-audio-card,name = "AML-AUGESOUND";
++		mute_gpio = <&gpio_ao GPIOAO_2 GPIO_ACTIVE_LOW>;
++		aml-audio-card,effect = <&audio_effect>;
++
++		aml-audio-card,dai-link@0 {
++			mclk-fs = <128>;
++			continuous-clock;
++			cpu {
++				sound-dai = <&aml_spdif_b>;
++				system-clock-frequency = <6144000>;
++			};
++			codec {
++				sound-dai = <&dummy_codec>;
++			};
++		};
++
++		aml-audio-card,dai-link@1 {
++			format = "i2s";// "dsp_a";
++			mclk-fs = <256>;
++			bitclock-master = <&aml_tdmb>;
++			frame-master = <&aml_tdmb>;
++			continuous-clock;
++			cpu {
++				sound-dai = <&aml_tdmb>;
++				dai-tdm-slot-tx-mask = <1 1>;
++				dai-tdm-slot-rx-mask = <1 1>;
++				dai-tdm-slot-num = <2>;
++				dai-tdm-slot-width = <32>;
++				system-clock-frequency = <12288000>;
++			};
++			codec {
++				sound-dai = <&amlogic_codec>;
++			};
++		};
++
++		aml-audio-card,dai-link@2 {
++			mclk-fs = <128>;
++			continuous-clock;
++			cpu {
++				sound-dai = <&aml_spdif>;
++				system-clock-frequency = <6144000>;
++			};
++			codec {
++				sound-dai = <&dummy_codec>;
++			};
++		};
++	};
++
++	gpioleds {
++		/delete-node/ net_red;
++		/delete-node/ net_green;
++		/delete-node/ remote_led;
++	};
++};
++
++&sd_emmc_b2 {
++	status = "okay";
++};
+diff --git a/arch/arm64/boot/dts/amlogic/coreelec_g12b.dtsi b/arch/arm64/boot/dts/amlogic/coreelec_g12b.dtsi
+new file mode 100644
+index 000000000000..b3d3c71ad7b8
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/coreelec_g12b.dtsi
+@@ -0,0 +1,83 @@
++#include "g12b_a311d_w400_buildroot.dts"
++#include "coreelec_common.dtsi"
++
++/{
++	reserved-memory {
++		galcore_reserved:linux,galcore {
++			size = <0x0 0x1000000>;
++		};
++	};
++
++	/delete-node/ auge_sound;
++	auge_sound {
++		compatible = "amlogic, g12a-sound-card";
++		aml-audio-card,name = "AML-AUGESOUND";
++		mute_gpio = <&gpio_ao GPIOAO_2 GPIO_ACTIVE_LOW>;
++		aml-audio-card,effect = <&audio_effect>;
++
++		aml-audio-card,dai-link@0 {
++			mclk-fs = <128>;
++			continuous-clock;
++			cpu {
++				sound-dai = <&aml_spdif_b>;
++				system-clock-frequency = <6144000>;
++			};
++			codec {
++				sound-dai = <&dummy_codec>;
++			};
++		};
++
++		aml-audio-card,dai-link@1 {
++			format = "i2s";// "dsp_a";
++			mclk-fs = <256>;
++			bitclock-master = <&aml_tdmb>;
++			frame-master = <&aml_tdmb>;
++			continuous-clock;
++			cpu {
++				sound-dai = <&aml_tdmb>;
++				dai-tdm-slot-tx-mask = <1 1>;
++				dai-tdm-slot-rx-mask = <1 1>;
++				dai-tdm-slot-num = <2>;
++				dai-tdm-slot-width = <32>;
++				system-clock-frequency = <12288000>;
++			};
++			codec {
++				sound-dai = <&amlogic_codec>;
++			};
++		};
++
++		aml-audio-card,dai-link@2 {
++			mclk-fs = <128>;
++			continuous-clock;
++			cpu {
++				sound-dai = <&aml_spdif>;
++				system-clock-frequency = <6144000>;
++			};
++			codec {
++				sound-dai = <&dummy_codec>;
++			};
++		};
++	};
++};
++
++&audiobus {
++	aml_spdif_b: spdif_b {
++		status = "okay";
++	};
++	aml_tdmb: tdmb {
++		/delete-property/ samesource_sel;
++		i2s2hdmi = <0>;
++		status = "okay";
++	};
++};
++
++&ethmac {
++	pinctrl-names = "external_eth_pins";
++	pinctrl-0 = <&external_eth_pins>;
++	mc_val = <0x1621>;
++	internal_phy=<0>;
++};
++
++&usb3_phy_v2 {
++	portnum = <1>;
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12a_s905x2_2g.dts b/arch/arm64/boot/dts/amlogic/g12a_s905x2_2g.dts
+new file mode 100644
+index 000000000000..492eea5ccb59
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12a_s905x2_2g.dts
+@@ -0,0 +1,10 @@
++#include "coreelec_g12a.dtsi"
++
++/{
++	model = "Amlogic S905X2";
++	coreelec-dt-id = "g12a_s905x2_2g";
++};
++
++&i2c0 {
++	status = "disabled";
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12a_s905x2_2g_1gbit.dts b/arch/arm64/boot/dts/amlogic/g12a_s905x2_2g_1gbit.dts
+new file mode 100644
+index 000000000000..ef7c295f3c7a
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12a_s905x2_2g_1gbit.dts
+@@ -0,0 +1,12 @@
++#include "g12a_s905x2_2g.dts"
++
++/{
++	coreelec-dt-id = "g12a_s905x2_2g_1gbit";
++};
++
++&ethmac {
++	pinctrl-names = "external_eth_pins";
++	pinctrl-0 = <&external_eth_pins>;
++	mc_val = <0x1621>;
++	internal_phy=<0>;
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12a_s905x2_4g.dts b/arch/arm64/boot/dts/amlogic/g12a_s905x2_4g.dts
+new file mode 100644
+index 000000000000..1c3c25b9eb50
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12a_s905x2_4g.dts
+@@ -0,0 +1,9 @@
++#include "g12a_s905x2_2g.dts"
++
++/{
++	coreelec-dt-id = "g12a_s905x2_4g";
++
++	memory@00000000 {
++		linux,usable-memory = <0x0 0x100000 0x0 0xf0800000>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12a_s905x2_4g_1gbit.dts b/arch/arm64/boot/dts/amlogic/g12a_s905x2_4g_1gbit.dts
+new file mode 100644
+index 000000000000..49d49eed8754
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12a_s905x2_4g_1gbit.dts
+@@ -0,0 +1,12 @@
++#include "g12a_s905x2_4g.dts"
++
++/{
++	coreelec-dt-id = "g12a_s905x2_4g_1gbit";
++};
++
++&ethmac {
++	pinctrl-names = "external_eth_pins";
++	pinctrl-0 = <&external_eth_pins>;
++	mc_val = <0x1621>;
++	internal_phy=<0>;
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12b_a311d_khadas_vim3.dts b/arch/arm64/boot/dts/amlogic/g12b_a311d_khadas_vim3.dts
+new file mode 100644
+index 000000000000..b34994547c71
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12b_a311d_khadas_vim3.dts
+@@ -0,0 +1,36 @@
++#include "coreelec_g12b.dtsi"
++
++/{
++	model = "Khadas VIM3";
++	coreelec-dt-id = "g12b_a311d_khadas_vim3";
++
++	/delete-node/ memory@00000000;
++
++	auge_sound {
++		/delete-property/ mute_gpio;
++	};
++
++	gpioleds {
++		sys_led {
++			gpios=<&gpio_ao GPIOAO_4 GPIO_ACTIVE_HIGH>;
++		};
++	};
++
++	gpio_keypad {
++		key-gpios = <&gpio_ao GPIOAO_7 GPIO_ACTIVE_HIGH>;
++	};
++
++	/delete-node/ rtc;
++};
++
++&i2c_AO {
++	status = "okay";
++	pinctrl-names="default";
++	pinctrl-0=<&ao_i2c_master_pins1>;
++	clock-frequency = <400000>;
++
++	hym8563: hym8563@51 {
++		compatible = "haoyu,hym8563";
++		reg = <0x51>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12b_a311d_odroid_n2.dts b/arch/arm64/boot/dts/amlogic/g12b_a311d_odroid_n2.dts
+deleted file mode 100644
+index 00ad63b35cc1..000000000000
+--- a/arch/arm64/boot/dts/amlogic/g12b_a311d_odroid_n2.dts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-#include "meson64_odroidn2.dts"
+-
+-/{
+-	coreelec-dt-id = "g12b_a311d_odroid_n2";
+-};
+diff --git a/arch/arm64/boot/dts/amlogic/g12b_s922x_beelink_gt_king.dts b/arch/arm64/boot/dts/amlogic/g12b_s922x_beelink_gt_king.dts
+new file mode 100644
+index 000000000000..d79777b06dfc
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12b_s922x_beelink_gt_king.dts
+@@ -0,0 +1,23 @@
++#include "coreelec_g12b.dtsi"
++
++/{
++	model = "Beelink GT-King";
++	coreelec-dt-id = "g12b_s922x_beelink_gt_king";
++
++	memory@00000000 {
++		linux,usable-memory = <0x0 0x100000 0x0 0xf0800000>;
++	};
++
++	/delete-node/ rtc;
++};
++
++&usb3_phy_v2 {
++	otg = <0>;
++};
++
++&i2c3 {
++	hym8563: hym8563@51 {
++		compatible = "haoyu,hym8563";
++		reg = <0x51>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12b_s922x_beelink_gt_king_rev_a.dts b/arch/arm64/boot/dts/amlogic/g12b_s922x_beelink_gt_king_rev_a.dts
+new file mode 100644
+index 000000000000..3ee42bb0aa85
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12b_s922x_beelink_gt_king_rev_a.dts
+@@ -0,0 +1,103 @@
++#include "g12b_s922x_beelink_gt_king.dts"
++
++/{
++	coreelec-dt-id = "g12b_s922x_beelink_gt_king_rev_a";
++	
++	/delete-node/ cpu_opp_table0;
++	cpu_opp_table0: cpu_opp_table0 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp00 {
++			opp-hz = /bits/ 64 <100000000>;
++			opp-microvolt = <731000>;
++		};
++		opp01 {
++			opp-hz = /bits/ 64 <250000000>;
++			opp-microvolt = <731000>;
++		};
++		opp02 {
++			opp-hz = /bits/ 64 <500000000>;
++			opp-microvolt = <731000>;
++		};
++		opp03 {
++			opp-hz = /bits/ 64 <667000000>;
++			opp-microvolt = <731000>;
++		};
++		opp04 {
++			opp-hz = /bits/ 64 <1000000000>;
++			opp-microvolt = <731000>;
++		};
++		opp05 {
++			opp-hz = /bits/ 64 <1200000000>;
++			opp-microvolt = <731000>;
++		};
++		opp06 {
++			opp-hz = /bits/ 64 <1398000000>;
++			opp-microvolt = <761000>;
++		};
++		opp07 {
++			opp-hz = /bits/ 64 <1512000000>;
++			opp-microvolt = <791000>;
++		};
++		opp08 {
++			opp-hz = /bits/ 64 <1608000000>;
++			opp-microvolt = <831000>;
++		};
++		opp09 {
++			opp-hz = /bits/ 64 <1704000000>;
++			opp-microvolt = <861000>;
++		};
++		opp10 {
++			opp-hz = /bits/ 64 <1800000000>;
++			opp-microvolt = <981000>;
++		};
++	};
++
++	/delete-node/ cpu_opp_table1;
++	cpu_opp_table1: cpu_opp_table1 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp00 {
++			opp-hz = /bits/ 64 <100000000>;
++			opp-microvolt = <751000>;
++		};
++		opp01 {
++			opp-hz = /bits/ 64 <250000000>;
++			opp-microvolt = <751000>;
++		};
++		opp02 {
++			opp-hz = /bits/ 64 <500000000>;
++			opp-microvolt = <751000>;
++		};
++		opp03 {
++			opp-hz = /bits/ 64 <667000000>;
++			opp-microvolt = <751000>;
++		};
++		opp04 {
++			opp-hz = /bits/ 64 <1000000000>;
++			opp-microvolt = <771000>;
++		};
++		opp05 {
++			opp-hz = /bits/ 64 <1200000000>;
++			opp-microvolt = <771000>;
++		};
++		opp06 {
++			opp-hz = /bits/ 64 <1398000000>;
++			opp-microvolt = <791000>;
++		};
++		opp07 {
++			opp-hz = /bits/ 64 <1512000000>;
++			opp-microvolt = <821000>;
++		};
++		opp08 {
++			opp-hz = /bits/ 64 <1608000000>;
++			opp-microvolt = <861000>;
++		};
++		opp09 {
++			opp-hz = /bits/ 64 <1704000000>;
++			opp-microvolt = <891000>;
++		};
++	};
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12b_s922x_odroid_n2.dts b/arch/arm64/boot/dts/amlogic/g12b_s922x_odroid_n2.dts
+new file mode 100644
+index 000000000000..d1d46c126ddd
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12b_s922x_odroid_n2.dts
+@@ -0,0 +1,10 @@
++#include "meson64_odroidn2.dts"
++#include "coreelec_common.dtsi"
++
++/{
++	coreelec-dt-id = "g12b_s922x_odroid_n2";
++};
++
++&i2c2 {
++	status = "okay";
++};
+diff --git a/arch/arm64/boot/dts/amlogic/g12b_s922x_odroid_n2_dvb.dts b/arch/arm64/boot/dts/amlogic/g12b_s922x_odroid_n2_dvb.dts
+new file mode 100644
+index 000000000000..3d5be6dbe1da
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/g12b_s922x_odroid_n2_dvb.dts
+@@ -0,0 +1,47 @@
++#include "g12b_s922x_odroid_n2.dts"
++
++/{
++	coreelec-dt-id = "g12b_s922x_odroid_n2_dvb";
++
++	dvb {
++		compatible = "amlogic,dvb";
++		dev_name = "avl6862";
++		status = "okay";
++		dtv_demod0_i2c_adap_id = <2>;
++		ts0 = "serial";
++		ts0_control = <0>;
++		ts0_invert = <0>;
++		fec_reset_gpio-gpios = <&gpio GPIOX_13 GPIO_ACTIVE_HIGH>;
++		power_ctrl_gpio-gpios = <&gpio GPIOX_12 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "s_ts0", "s_ts1";
++		pinctrl-0 = <&dvb_s_ts0_pins>;
++		pinctrl-1 = <&dvb_s_ts1_pins>;
++		interrupts = <GIC_SPI 23 IRQ_TYPE_EDGE_RISING>,
++			     <GIC_SPI  5 IRQ_TYPE_EDGE_RISING>,
++			     <GIC_SPI 19 IRQ_TYPE_EDGE_RISING>,
++			     <GIC_SPI 25 IRQ_TYPE_EDGE_RISING>;
++		interrupt-names = "demux0", "demux1", "asyncfifo0", "asyncfifo1";
++	};
++};
++
++&pinctrl_periphs {
++	dvb_s_ts0_pins: dvb_s_ts0_pins {
++		tsin_a {
++			groups ="tsin_a_valid",
++				"tsin_a_sop",
++				"tsin_a_din0",
++				"tsin_a_clk";
++			function = "tsin_a";
++		};
++	};
++
++	dvb_s_ts1_pins: dvb_s_ts1_pins {
++		tsin_b {
++			groups = "tsin_b_sop_x",
++			"tsin_b_valid_x",
++			"tsin_b_clk_x",
++			"tsin_b_din0_x";
++			function = "tsin_b";
++		};
++	};
++};
+
+
+
+
+
+
+
+
+
+
+
+
+diff --git a/arch/arm64/boot/dts/amlogic/gxl_p212_1g_lepotato.dts b/arch/arm64/boot/dts/amlogic/gxl_p212_1g_lepotato.dts
+new file mode 100644
+index 000000000000..165d61a1da30
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/gxl_p212_1g_lepotato.dts
+@@ -0,0 +1,6 @@
++#include "gxl_p212_1g.dts"
++#include "lepotato.dtsi"
++
++/ {
++	le-dt-id = "gxl_p212_1g_lepotato";
++};
+diff --git a/arch/arm64/boot/dts/amlogic/gxl_p212_2g_lepotato.dts b/arch/arm64/boot/dts/amlogic/gxl_p212_2g_lepotato.dts
+new file mode 100644
+index 000000000000..eb2af5d9e263
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/gxl_p212_2g_lepotato.dts
+@@ -0,0 +1,6 @@
++#include "gxl_p212_2g.dts"
++#include "lepotato.dtsi"
++
++/ {
++	le-dt-id = "gxl_p212_2g_lepotato";
++};
+diff --git a/arch/arm64/boot/dts/amlogic/lepotato.dtsi b/arch/arm64/boot/dts/amlogic/lepotato.dtsi
+new file mode 100644
+index 000000000000..e71a936ccc14
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/lepotato.dtsi
+@@ -0,0 +1,24 @@
++/ {
++	leds: gpio_leds {
++		compatible = "gpio-leds";
++
++		system {
++			label = "librecomputer:system-status";
++			gpios = <&gpio GPIODV_24 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++			panic-indicator;
++		};
++
++		blue {
++			label = "librecomputer:blue";
++			gpios = <&gpio_ao GPIOAO_2 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++	};
++
++	gpio_keypad {
++		status = "disabled";
++	};
++
++	/delete-node/ partitions;
++};
+
+
+
+
+diff --git a/arch/arm64/boot/dts/amlogic/meson64_odroidc3_android.dts b/arch/arm64/boot/dts/amlogic/meson64_odroidc3_android.dts
+new file mode 100644
+index 000000000000..1be53aa9fd87
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/meson64_odroidc3_android.dts
+@@ -0,0 +1,78 @@
++/*
++ * arch/arm64/boot/dts/amlogic/meson64_odroidc3_android.dts
++ *
++ * Copyright (C) 2018 Hardkernel Co., Ltd. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ */
++
++#include "meson64_odroidc3.dts"
++
++/ {
++	firmware {
++		android {
++			compatible = "android,firmware";
++			vbmeta {
++				compatible = "android,vbmeta";
++				parts = "boot,system,vendor";
++				by_name_prefix="/dev/block";
++			};
++			fstab {
++				compatible = "android,fstab";
++				system {
++					compatible = "android,system";
++					dev = "/dev/block/system";
++					type = "ext4";
++					mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
++					fsmgr_flags = "wait";
++				};
++				vendor {
++					compatible = "android,vendor";
++					dev = "/dev/block/vendor";
++					type = "ext4";
++					mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
++					fsmgr_flags = "wait";
++				};
++				odm {
++					compatible = "android,odm";
++					dev = "/dev/block/odm";
++					type = "vfat";
++					mnt_flags = "rw";
++					fsmgr_flags = "wait";
++				};
++			};
++		};
++	};
++};
++
++&custom_maps {
++	mapnum = <1>;
++	map0 = <&map_0>;
++	map_0: map_0 {
++		mapname = "hardkernel-remote";
++		customcode = <0x4db2>;
++		release_delay = <80>;
++		size  = <12>;
++		keymap = <REMOTE_KEY(0x88,113)
++			REMOTE_KEY(0xdc,116)
++			REMOTE_KEY(0xc5,139)
++			REMOTE_KEY(0x9a,158)
++			REMOTE_KEY(0xca,103)
++			REMOTE_KEY(0x99,105)
++			REMOTE_KEY(0xc1,106)
++			REMOTE_KEY(0xd2,108)
++			REMOTE_KEY(0x80,104)
++			REMOTE_KEY(0x81,109)
++			REMOTE_KEY(0x82,102)
++			REMOTE_KEY(0xce,97)>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/amlogic/meson64_odroidn2.dts b/arch/arm64/boot/dts/amlogic/meson64_odroidn2.dts
+index 4ece5798b1eb..1058ff06446a 100644
+--- a/arch/arm64/boot/dts/amlogic/meson64_odroidn2.dts
++++ b/arch/arm64/boot/dts/amlogic/meson64_odroidn2.dts
+@@ -139,8 +139,8 @@
+ 		galcore_reserved:linux,galcore {
+ 			compatible = "shared-dma-pool";
+ 			reusable;
+-			size = <0x1000000>;
+-			alignment = <0x400000>;
++			size = <0x0 0x1000000>;
++			alignment = <0x0 0x400000>;
+ 			linux,contiguous-region;
+ 		};
+ 	};
+@@ -365,13 +365,6 @@
+ 		key_code = <116>;
+ 		reg = <0x0 0xFF800000 0x0 0x400>;
+ 	};
+-
+-	hk-lirc-helper {
+-		compatible = "hk-lirc-helper";
+-		/* Multi-format IR controller */
+-		reg = <0x0 0xff808040 0x0 0x44>;
+-		status = "ok";
+-	};
+ }; /* end of / */
+ 
+ &meson_fb {
+diff --git a/arch/arm64/boot/dts/amlogic/meson64_odroidn2_android.dts b/arch/arm64/boot/dts/amlogic/meson64_odroidn2_android.dts
+new file mode 100644
+index 000000000000..74b5c1b77d54
+--- /dev/null
++++ b/arch/arm64/boot/dts/amlogic/meson64_odroidn2_android.dts
+@@ -0,0 +1,78 @@
++/*
++ * arch/arm64/boot/dts/amlogic/meson64_odroidc3_android.dts
++ *
++ * Copyright (C) 2018 Hardkernel Co., Ltd. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ */
++
++#include "meson64_odroidn2.dts"
++
++/ {
++	firmware {
++		android {
++			compatible = "android,firmware";
++			vbmeta {
++				compatible = "android,vbmeta";
++				parts = "boot,system,vendor";
++				by_name_prefix="/dev/block";
++			};
++			fstab {
++				compatible = "android,fstab";
++				system {
++					compatible = "android,system";
++					dev = "/dev/block/system";
++					type = "ext4";
++					mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
++					fsmgr_flags = "wait";
++				};
++				vendor {
++					compatible = "android,vendor";
++					dev = "/dev/block/vendor";
++					type = "ext4";
++					mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
++					fsmgr_flags = "wait";
++				};
++				odm {
++					compatible = "android,odm";
++					dev = "/dev/block/odm";
++					type = "vfat";
++					mnt_flags = "rw";
++					fsmgr_flags = "wait";
++				};
++			};
++		};
++	};
++};
++
++&custom_maps {
++	mapnum = <1>;
++	map0 = <&map_0>;
++	map_0: map_0 {
++		mapname = "hardkernel-remote";
++		customcode = <0x4db2>;
++		release_delay = <80>;
++		size  = <12>;
++		keymap = <REMOTE_KEY(0x88,113)
++			REMOTE_KEY(0xdc,116)
++			REMOTE_KEY(0xc5,139)
++			REMOTE_KEY(0x9a,158)
++			REMOTE_KEY(0xca,103)
++			REMOTE_KEY(0x99,105)
++			REMOTE_KEY(0xc1,106)
++			REMOTE_KEY(0xd2,108)
++			REMOTE_KEY(0x80,104)
++			REMOTE_KEY(0x81,109)
++			REMOTE_KEY(0x82,102)
++			REMOTE_KEY(0xce,97)>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+index 00f49dd1268d..c0359bacd525 100644
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -826,12 +826,6 @@
+ 	cpu_ver_name{
+ 		compatible = "amlogic, cpu-major-id-axg";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ };/* end of / */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesong12a.dtsi b/arch/arm64/boot/dts/amlogic/mesong12a.dtsi
+index 0880f335af5e..ebd0f3f74299 100644
+--- a/arch/arm64/boot/dts/amlogic/mesong12a.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesong12a.dtsi
+@@ -1864,12 +1864,6 @@
+ 	cpu_ver_name {
+ 		compatible = "amlogic, cpu-major-id-g12a";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ };/* end of / */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesong12b.dtsi b/arch/arm64/boot/dts/amlogic/mesong12b.dtsi
+index 3786fbdfca64..2ca5d48a88f1 100644
+--- a/arch/arm64/boot/dts/amlogic/mesong12b.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesong12b.dtsi
+@@ -917,19 +917,165 @@
+ 		};
+ 	}; /* end of soc*/
+ 
+-	meson-remote {
++	remote:rc@0xff808040 {
+ 		compatible = "amlogic, aml_remote";
+ 		dev_name = "meson-remote";
+ 		reg = <0x0 0xff808040 0x00 0x44>, /*Multi-format IR controller*/
+ 			<0x0 0xff808000 0x00 0x20>; /*Legacy IR controller*/
+-		status = "disabled";
++		status = "okay";
+ 		protocol = <REMOTE_TYPE_NEC>;
+ 		interrupts = <0 196 1>;
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&remote_pins>;
++		map = <&custom_maps>;
+ 		max_frame_time = <200>; /*set software decoder max frame time*/
+ 	};
+ 
++	custom_maps:custom_maps {
++		mapnum = <3>;
++		map0 = <&map_0>;
++		map1 = <&map_1>;
++		map2 = <&map_2>;
++		map_0: map_0{
++			mapname = "amlogic-remote-1";
++			customcode = <0xfb04>;
++			release_delay = <80>;
++			size  = <50>;   /*keymap size*/
++			keymap = <REMOTE_KEY(0x47, KEY_0)
++				REMOTE_KEY(0x13, KEY_1)
++				REMOTE_KEY(0x10, KEY_2)
++				REMOTE_KEY(0x11, KEY_3)
++				REMOTE_KEY(0x0F, KEY_4)
++				REMOTE_KEY(0x0C, KEY_5)
++				REMOTE_KEY(0x0D, KEY_6)
++				REMOTE_KEY(0x0B, KEY_7)
++				REMOTE_KEY(0x08, KEY_8)
++				REMOTE_KEY(0x09, KEY_9)
++				REMOTE_KEY(0x5C, KEY_RIGHTCTRL)
++				REMOTE_KEY(0x51, KEY_F3)
++				REMOTE_KEY(0x50, KEY_F4)
++				REMOTE_KEY(0x40, KEY_F5)
++				REMOTE_KEY(0x4d, KEY_F6)
++				REMOTE_KEY(0x43, KEY_F7)
++				REMOTE_KEY(0x17, KEY_F8)
++				REMOTE_KEY(0x00, KEY_F9)
++				REMOTE_KEY(0x01, KEY_F10)
++				REMOTE_KEY(0x16, KEY_F11)
++				REMOTE_KEY(0x49, KEY_BACKSPACE)
++				REMOTE_KEY(0x06, KEY_PROPS)
++				REMOTE_KEY(0x14, KEY_UNDO)
++				REMOTE_KEY(0x44, KEY_UP)
++				REMOTE_KEY(0x1D, KEY_DOWN)
++				REMOTE_KEY(0x1C, KEY_LEFT)
++				REMOTE_KEY(0x48, KEY_RIGHT)
++				REMOTE_KEY(0x53, KEY_LEFTMETA)
++				REMOTE_KEY(0x45, KEY_PAGEUP)
++				REMOTE_KEY(0x19, KEY_PAGEDOWN)
++				REMOTE_KEY(0x52, KEY_PAUSE)
++				REMOTE_KEY(0x05, KEY_HANGEUL)
++				REMOTE_KEY(0x59, KEY_HANJA)
++				REMOTE_KEY(0x1b, KEY_SCALE)
++				REMOTE_KEY(0x04, KEY_KPCOMMA)
++				REMOTE_KEY(0x1A, KEY_POWER)
++				REMOTE_KEY(0x0A, KEY_TAB)
++				REMOTE_KEY(0x0e, KEY_MUTE)
++				REMOTE_KEY(0x1F, KEY_HOME)
++				REMOTE_KEY(0x1e, KEY_FRONT)
++				REMOTE_KEY(0x07, KEY_COPY)
++				REMOTE_KEY(0x12, KEY_OPEN)
++				REMOTE_KEY(0x54, KEY_PASTE)
++				REMOTE_KEY(0x02, KEY_FIND)
++				REMOTE_KEY(0x4f, KEY_A)
++				REMOTE_KEY(0x42, KEY_B)
++				REMOTE_KEY(0x5d, KEY_C)
++				REMOTE_KEY(0x4c, KEY_D)
++				REMOTE_KEY(0x58, KEY_CUT)
++				REMOTE_KEY(0x55, KEY_CALC)>;
++		};
++		map_1: map_1{
++			mapname = "amlogic-remote-2";
++			customcode = <0xfe01>;
++			release_delay = <80>;
++			size  = <53>;
++			keymap = <REMOTE_KEY(0x01, KEY_1)
++				REMOTE_KEY(0x02, KEY_2)
++				REMOTE_KEY(0x03, KEY_3)
++				REMOTE_KEY(0x04, KEY_4)
++				REMOTE_KEY(0x05, KEY_5)
++				REMOTE_KEY(0x06, KEY_6)
++				REMOTE_KEY(0x07, KEY_7)
++				REMOTE_KEY(0x08, KEY_8)
++				REMOTE_KEY(0x09, KEY_9)
++				REMOTE_KEY(0x0a, KEY_0)
++				REMOTE_KEY(0x1F, KEY_FN_F1)
++				REMOTE_KEY(0x15, KEY_MENU)
++				REMOTE_KEY(0x16, KEY_TAB)
++				REMOTE_KEY(0x0c, KEY_CHANNELUP)
++				REMOTE_KEY(0x0d, KEY_CHANNELDOWN)
++				REMOTE_KEY(0x0e, KEY_VOLUMEUP)
++				REMOTE_KEY(0x0f, KEY_VOLUMEDOWN)
++				REMOTE_KEY(0x11, KEY_HOME)
++				REMOTE_KEY(0x1c, KEY_RIGHT)
++				REMOTE_KEY(0x1b, KEY_LEFT)
++				REMOTE_KEY(0x19, KEY_UP)
++				REMOTE_KEY(0x1a, KEY_DOWN)
++				REMOTE_KEY(0x1d, KEY_ENTER)
++				REMOTE_KEY(0x17, KEY_MUTE)
++				REMOTE_KEY(0x49, KEY_FINANCE)
++				REMOTE_KEY(0x43, KEY_BACK)
++				REMOTE_KEY(0x12, KEY_FN_F4)
++				REMOTE_KEY(0x14, KEY_FN_F5)
++				REMOTE_KEY(0x18, KEY_FN_F6)
++				REMOTE_KEY(0x59, KEY_INFO)
++				REMOTE_KEY(0x5a, KEY_STOPCD)
++				REMOTE_KEY(0x10, KEY_POWER)
++				REMOTE_KEY(0x42, KEY_PREVIOUSSONG)
++				REMOTE_KEY(0x44, KEY_NEXTSONG)
++				REMOTE_KEY(0x1e, KEY_REWIND)
++				REMOTE_KEY(0x4b, KEY_FASTFORWARD)
++				REMOTE_KEY(0x58, KEY_PLAYPAUSE)
++				REMOTE_KEY(0x46, KEY_PROPS)
++				REMOTE_KEY(0x40, KEY_UNDO)
++				REMOTE_KEY(0x38, KEY_SCROLLLOCK)
++				REMOTE_KEY(0x57, KEY_FN)
++				REMOTE_KEY(0x5b, KEY_FN_ESC)
++				REMOTE_KEY(0x54, KEY_RED)
++				REMOTE_KEY(0x4c, KEY_GREEN)
++				REMOTE_KEY(0x4e, KEY_YELLOW)
++				REMOTE_KEY(0x55, KEY_BLUE)
++				REMOTE_KEY(0x53, KEY_BLUETOOTH)
++				REMOTE_KEY(0x52, KEY_WLAN)
++				REMOTE_KEY(0x39, KEY_CAMERA)
++				REMOTE_KEY(0x41, KEY_SOUND)
++				REMOTE_KEY(0x0b, KEY_QUESTION)
++				REMOTE_KEY(0x00, KEY_CHAT)
++				REMOTE_KEY(0x13, KEY_SEARCH)>;
++		};
++		map_2: map_2{
++			mapname = "amlogic-remote-3";
++			customcode = <0xbd02>;
++			release_delay = <80>;
++			size  = <17>;
++			keymap = <REMOTE_KEY(0xca,103)
++			REMOTE_KEY(0xd2,108)
++			REMOTE_KEY(0x99,105)
++			REMOTE_KEY(0xc1,106)
++			REMOTE_KEY(0xce,97)
++			REMOTE_KEY(0x45,116)
++			REMOTE_KEY(0xc5,133)
++			REMOTE_KEY(0x80,113)
++			REMOTE_KEY(0xd0,15)
++			REMOTE_KEY(0xd6,125)
++			REMOTE_KEY(0x95,102)
++			REMOTE_KEY(0xdd,104)
++			REMOTE_KEY(0x8c,109)
++			REMOTE_KEY(0x89,131)
++			REMOTE_KEY(0x9c,130)
++			REMOTE_KEY(0x9a,120)
++			REMOTE_KEY(0xcd,121)>;
++		};
++	};
++
+ 	uart_A: serial@ffd24000 {
+ 		compatible = "amlogic, meson-uart";
+ 		reg = <0x0 0xffd24000 0x0 0x18>;
+@@ -1827,12 +1973,6 @@
+ 		mem_size = <0x0 0x100000>;
+ 		status = "okay";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ };/* end of / */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesong12b_a.dtsi b/arch/arm64/boot/dts/amlogic/mesong12b_a.dtsi
+index 03afb23726d4..3cf78ffc3229 100644
+--- a/arch/arm64/boot/dts/amlogic/mesong12b_a.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesong12b_a.dtsi
+@@ -869,19 +869,165 @@
+ 
+ 	}; /* end of soc*/
+ 
+-	meson-remote {
++	remote:rc@0xff808040 {
+ 		compatible = "amlogic, aml_remote";
+ 		dev_name = "meson-remote";
+ 		reg = <0x0 0xff808040 0x00 0x44>, /*Multi-format IR controller*/
+ 			<0x0 0xff808000 0x00 0x20>; /*Legacy IR controller*/
+-		status = "disabled";
++		status = "okay";
+ 		protocol = <REMOTE_TYPE_NEC>;
+ 		interrupts = <0 196 1>;
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&remote_pins>;
++		map = <&custom_maps>;
+ 		max_frame_time = <200>; /*set software decoder max frame time*/
+ 	};
+ 
++	custom_maps:custom_maps {
++		mapnum = <3>;
++		map0 = <&map_0>;
++		map1 = <&map_1>;
++		map2 = <&map_2>;
++		map_0: map_0{
++			mapname = "amlogic-remote-1";
++			customcode = <0xfb04>;
++			release_delay = <80>;
++			size  = <50>;   /*keymap size*/
++			keymap = <REMOTE_KEY(0x47, KEY_0)
++				REMOTE_KEY(0x13, KEY_1)
++				REMOTE_KEY(0x10, KEY_2)
++				REMOTE_KEY(0x11, KEY_3)
++				REMOTE_KEY(0x0F, KEY_4)
++				REMOTE_KEY(0x0C, KEY_5)
++				REMOTE_KEY(0x0D, KEY_6)
++				REMOTE_KEY(0x0B, KEY_7)
++				REMOTE_KEY(0x08, KEY_8)
++				REMOTE_KEY(0x09, KEY_9)
++				REMOTE_KEY(0x5C, KEY_RIGHTCTRL)
++				REMOTE_KEY(0x51, KEY_F3)
++				REMOTE_KEY(0x50, KEY_F4)
++				REMOTE_KEY(0x40, KEY_F5)
++				REMOTE_KEY(0x4d, KEY_F6)
++				REMOTE_KEY(0x43, KEY_F7)
++				REMOTE_KEY(0x17, KEY_F8)
++				REMOTE_KEY(0x00, KEY_F9)
++				REMOTE_KEY(0x01, KEY_F10)
++				REMOTE_KEY(0x16, KEY_F11)
++				REMOTE_KEY(0x49, KEY_BACKSPACE)
++				REMOTE_KEY(0x06, KEY_PROPS)
++				REMOTE_KEY(0x14, KEY_UNDO)
++				REMOTE_KEY(0x44, KEY_UP)
++				REMOTE_KEY(0x1D, KEY_DOWN)
++				REMOTE_KEY(0x1C, KEY_LEFT)
++				REMOTE_KEY(0x48, KEY_RIGHT)
++				REMOTE_KEY(0x53, KEY_LEFTMETA)
++				REMOTE_KEY(0x45, KEY_PAGEUP)
++				REMOTE_KEY(0x19, KEY_PAGEDOWN)
++				REMOTE_KEY(0x52, KEY_PAUSE)
++				REMOTE_KEY(0x05, KEY_HANGEUL)
++				REMOTE_KEY(0x59, KEY_HANJA)
++				REMOTE_KEY(0x1b, KEY_SCALE)
++				REMOTE_KEY(0x04, KEY_KPCOMMA)
++				REMOTE_KEY(0x1A, KEY_POWER)
++				REMOTE_KEY(0x0A, KEY_TAB)
++				REMOTE_KEY(0x0e, KEY_MUTE)
++				REMOTE_KEY(0x1F, KEY_HOME)
++				REMOTE_KEY(0x1e, KEY_FRONT)
++				REMOTE_KEY(0x07, KEY_COPY)
++				REMOTE_KEY(0x12, KEY_OPEN)
++				REMOTE_KEY(0x54, KEY_PASTE)
++				REMOTE_KEY(0x02, KEY_FIND)
++				REMOTE_KEY(0x4f, KEY_A)
++				REMOTE_KEY(0x42, KEY_B)
++				REMOTE_KEY(0x5d, KEY_C)
++				REMOTE_KEY(0x4c, KEY_D)
++				REMOTE_KEY(0x58, KEY_CUT)
++				REMOTE_KEY(0x55, KEY_CALC)>;
++		};
++		map_1: map_1{
++			mapname = "amlogic-remote-2";
++			customcode = <0xfe01>;
++			release_delay = <80>;
++			size  = <53>;
++			keymap = <REMOTE_KEY(0x01, KEY_1)
++				REMOTE_KEY(0x02, KEY_2)
++				REMOTE_KEY(0x03, KEY_3)
++				REMOTE_KEY(0x04, KEY_4)
++				REMOTE_KEY(0x05, KEY_5)
++				REMOTE_KEY(0x06, KEY_6)
++				REMOTE_KEY(0x07, KEY_7)
++				REMOTE_KEY(0x08, KEY_8)
++				REMOTE_KEY(0x09, KEY_9)
++				REMOTE_KEY(0x0a, KEY_0)
++				REMOTE_KEY(0x1F, KEY_FN_F1)
++				REMOTE_KEY(0x15, KEY_MENU)
++				REMOTE_KEY(0x16, KEY_TAB)
++				REMOTE_KEY(0x0c, KEY_CHANNELUP)
++				REMOTE_KEY(0x0d, KEY_CHANNELDOWN)
++				REMOTE_KEY(0x0e, KEY_VOLUMEUP)
++				REMOTE_KEY(0x0f, KEY_VOLUMEDOWN)
++				REMOTE_KEY(0x11, KEY_HOME)
++				REMOTE_KEY(0x1c, KEY_RIGHT)
++				REMOTE_KEY(0x1b, KEY_LEFT)
++				REMOTE_KEY(0x19, KEY_UP)
++				REMOTE_KEY(0x1a, KEY_DOWN)
++				REMOTE_KEY(0x1d, KEY_ENTER)
++				REMOTE_KEY(0x17, KEY_MUTE)
++				REMOTE_KEY(0x49, KEY_FINANCE)
++				REMOTE_KEY(0x43, KEY_BACK)
++				REMOTE_KEY(0x12, KEY_FN_F4)
++				REMOTE_KEY(0x14, KEY_FN_F5)
++				REMOTE_KEY(0x18, KEY_FN_F6)
++				REMOTE_KEY(0x59, KEY_INFO)
++				REMOTE_KEY(0x5a, KEY_STOPCD)
++				REMOTE_KEY(0x10, KEY_POWER)
++				REMOTE_KEY(0x42, KEY_PREVIOUSSONG)
++				REMOTE_KEY(0x44, KEY_NEXTSONG)
++				REMOTE_KEY(0x1e, KEY_REWIND)
++				REMOTE_KEY(0x4b, KEY_FASTFORWARD)
++				REMOTE_KEY(0x58, KEY_PLAYPAUSE)
++				REMOTE_KEY(0x46, KEY_PROPS)
++				REMOTE_KEY(0x40, KEY_UNDO)
++				REMOTE_KEY(0x38, KEY_SCROLLLOCK)
++				REMOTE_KEY(0x57, KEY_FN)
++				REMOTE_KEY(0x5b, KEY_FN_ESC)
++				REMOTE_KEY(0x54, KEY_RED)
++				REMOTE_KEY(0x4c, KEY_GREEN)
++				REMOTE_KEY(0x4e, KEY_YELLOW)
++				REMOTE_KEY(0x55, KEY_BLUE)
++				REMOTE_KEY(0x53, KEY_BLUETOOTH)
++				REMOTE_KEY(0x52, KEY_WLAN)
++				REMOTE_KEY(0x39, KEY_CAMERA)
++				REMOTE_KEY(0x41, KEY_SOUND)
++				REMOTE_KEY(0x0b, KEY_QUESTION)
++				REMOTE_KEY(0x00, KEY_CHAT)
++				REMOTE_KEY(0x13, KEY_SEARCH)>;
++		};
++		map_2: map_2{
++			mapname = "amlogic-remote-3";
++			customcode = <0xbd02>;
++			release_delay = <80>;
++			size  = <17>;
++			keymap = <REMOTE_KEY(0xca,103)
++			REMOTE_KEY(0xd2,108)
++			REMOTE_KEY(0x99,105)
++			REMOTE_KEY(0xc1,106)
++			REMOTE_KEY(0xce,97)
++			REMOTE_KEY(0x45,116)
++			REMOTE_KEY(0xc5,133)
++			REMOTE_KEY(0x80,113)
++			REMOTE_KEY(0xd0,15)
++			REMOTE_KEY(0xd6,125)
++			REMOTE_KEY(0x95,102)
++			REMOTE_KEY(0xdd,104)
++			REMOTE_KEY(0x8c,109)
++			REMOTE_KEY(0x89,131)
++			REMOTE_KEY(0x9c,130)
++			REMOTE_KEY(0x9a,120)
++			REMOTE_KEY(0xcd,121)>;
++		};
++	};
++
+ 	uart_A: serial@ffd24000 {
+ 		compatible = "amlogic, meson-uart";
+ 		reg = <0x0 0xffd24000 0x0 0x18>;
+@@ -1781,12 +1927,6 @@
+ 		mem_size = <0x0 0x100000>;
+ 		status = "okay";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ };/* end of / */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesongxl.dtsi b/arch/arm64/boot/dts/amlogic/mesongxl.dtsi
+index 7a3c21beb0f2..135ba4c204a9 100644
+--- a/arch/arm64/boot/dts/amlogic/mesongxl.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesongxl.dtsi
+@@ -568,12 +568,6 @@
+ 		mem_size = <0x0 0x100000>;
+ 		status = "okay";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ }; /* end of root */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesongxl_sei210.dtsi b/arch/arm64/boot/dts/amlogic/mesongxl_sei210.dtsi
+index c8dbc57835b7..f5e6e9151ece 100644
+--- a/arch/arm64/boot/dts/amlogic/mesongxl_sei210.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesongxl_sei210.dtsi
+@@ -555,12 +555,6 @@
+ 		mem_size = <0x0 0x100000>;
+ 		status = "okay";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ }; /* end of root */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesongxm.dtsi b/arch/arm64/boot/dts/amlogic/mesongxm.dtsi
+index f638d7afdba0..0a6841bccb3b 100644
+--- a/arch/arm64/boot/dts/amlogic/mesongxm.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesongxm.dtsi
+@@ -681,12 +681,6 @@
+ 		compatible = "amlogic, vdac-gxm";
+ 		status = "okay";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ }; /* end of root */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/boot/dts/amlogic/mesontxl.dtsi b/arch/arm64/boot/dts/amlogic/mesontxl.dtsi
+index daabcef056a7..10332dfbbe35 100644
+--- a/arch/arm64/boot/dts/amlogic/mesontxl.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesontxl.dtsi
+@@ -1068,12 +1068,6 @@
+ 		compatible = "amlogic, vdac-txl";
+ 		status = "okay";
+ 	};
+-
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ }; /* end of / */
+ 
+ &gpu{
+@@ -1539,9 +1533,4 @@
+ 			function = "spi_a";
+ 		};
+ 	};
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ };
+diff --git a/arch/arm64/boot/dts/amlogic/mesontxlx.dtsi b/arch/arm64/boot/dts/amlogic/mesontxlx.dtsi
+index 85431f530ea5..389ca5b56c1c 100644
+--- a/arch/arm64/boot/dts/amlogic/mesontxlx.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesontxlx.dtsi
+@@ -949,11 +949,6 @@
+ 		reg = <0x0 0xff634500 0x0 0x4>; /*RNG_USR_DATA*/
+ 		mem_size = <0x0 0x100000>;
+ 	};
+-	openvfd {
+-		compatible = "open,vfd";
+-		dev_name = "openvfd";
+-		status = "okay";
+-	};
+ }; /* end of / */
+ 
+ &pinctrl_aobus {
+diff --git a/arch/arm64/configs/odroidn2_defconfig b/arch/arm64/configs/odroidn2_defconfig
+index 85c30b4d6f75..f99ac9b0a858 100644
+--- a/arch/arm64/configs/odroidn2_defconfig
++++ b/arch/arm64/configs/odroidn2_defconfig
+@@ -1414,7 +1414,6 @@ CONFIG_AMLOGIC_SERIAL_MESON_CONSOLE=y
+ # CONFIG_AMLOGIC_PRINTK_NOBLOCK_MODE is not set
+ CONFIG_AMLOGIC_IOMAP=y
+ CONFIG_AMLOGIC_PINCTRL=y
+-# CONFIG_AMLOGIC_PINCTRL_MESON_GXBB is not set
+ CONFIG_AMLOGIC_PINCTRL_MESON_GXL=y
+ CONFIG_AMLOGIC_PINCTRL_MESON_AXG=y
+ CONFIG_AMLOGIC_PINCTRL_MESON_TXLX=y
+@@ -1803,7 +1802,7 @@ CONFIG_AMLOGIC_ESM=y
+ #
+ # Multimedia Card support
+ #
+-# CONFIG_AMLOGIC_IRBLASTER_CORE is not set
++CONFIG_AMLOGIC_IRBLASTER=y
+ CONFIG_AMLOGIC_IIO=y
+ 
+ #
+@@ -3407,7 +3406,6 @@ CONFIG_DVB_MAX_ADAPTERS=8
+ CONFIG_RC_CORE=y
+ CONFIG_RC_MAP=y
+ CONFIG_RC_DECODERS=y
+-CONFIG_IR_IRMP_DECODER=y
+ CONFIG_LIRC=m
+ CONFIG_IR_LIRC_CODEC=m
+ CONFIG_IR_NEC_DECODER=m
+@@ -3433,7 +3431,6 @@ CONFIG_IR_MESON=m
+ # CONFIG_RC_LOOPBACK is not set
+ CONFIG_IR_GPIO_CIR=m
+ CONFIG_IR_GPIOPLUG_CIR=m
+-CONFIG_IR_HK_LIRC_HELPER=y
+ CONFIG_MEDIA_USB_SUPPORT=y
+ 
+ #
+@@ -4159,7 +4156,6 @@ CONFIG_AMLOGIC_SND_CODEC_AMLT9015=y
+ # CONFIG_AMLOGIC_SND_SOC_TAS5805 is not set
+ CONFIG_AMLOGIC_SND_CODEC_TXLX_ACODEC=y
+ # CONFIG_AMLOGIC_SND_CODEC_TL1_ACODEC is not set
+-# CONFIG_AMLOGIC_SND_SOC_TAS5782M is not set
+ CONFIG_AMLOGIC_SND_SOC_TAS5707=y
+ CONFIG_AMLOGIC_SND_SOC_TLV320ADC3101=y
+ CONFIG_AMLOGIC_SND_SOC_PCM186X=y
+diff --git a/arch/arm64/configs/odroidn2_drm_defconfig b/arch/arm64/configs/odroidn2_drm_defconfig
+index dcad9c8eb840..8ae0453b4d2a 100644
+--- a/arch/arm64/configs/odroidn2_drm_defconfig
++++ b/arch/arm64/configs/odroidn2_drm_defconfig
+@@ -1,6 +1,6 @@
+ #
+ # Automatically generated file; DO NOT EDIT.
+-# Linux/arm64 4.9.185 Kernel Configuration
++# Linux/arm64 4.9.177 Kernel Configuration
+ #
+ CONFIG_ARM64=y
+ CONFIG_64BIT=y
+@@ -249,8 +249,7 @@ CONFIG_HAVE_CC_STACKPROTECTOR=y
+ CONFIG_CC_STACKPROTECTOR=y
+ # CONFIG_CC_STACKPROTECTOR_NONE is not set
+ # CONFIG_CC_STACKPROTECTOR_REGULAR is not set
+-# CONFIG_CC_STACKPROTECTOR_STRONG is not set
+-CONFIG_CC_STACKPROTECTOR_STRONG_AMLOGIC=y
++CONFIG_CC_STACKPROTECTOR_STRONG=y
+ # CONFIG_LTO is not set
+ CONFIG_ARCH_SUPPORTS_LTO_CLANG=y
+ CONFIG_LTO_NONE=y
+@@ -1414,7 +1413,6 @@ CONFIG_AMLOGIC_SERIAL_MESON_CONSOLE=y
+ # CONFIG_AMLOGIC_PRINTK_NOBLOCK_MODE is not set
+ CONFIG_AMLOGIC_IOMAP=y
+ CONFIG_AMLOGIC_PINCTRL=y
+-# CONFIG_AMLOGIC_PINCTRL_MESON_GXBB is not set
+ CONFIG_AMLOGIC_PINCTRL_MESON_GXL=y
+ CONFIG_AMLOGIC_PINCTRL_MESON_AXG=y
+ CONFIG_AMLOGIC_PINCTRL_MESON_TXLX=y
+@@ -1661,11 +1659,6 @@ CONFIG_AMLOGIC_IONVIDEO=y
+ #
+ CONFIG_AMLOGIC_PIC_DEC=y
+ 
+-#
+-# Amlogic videosync support
+-#
+-CONFIG_AMLOGIC_VIDEOSYNC=y
+-
+ #
+ # Amlogic Enhancement drivers
+ #
+@@ -1688,15 +1681,6 @@ CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_VECM=y
+ # Amlogic amdolby_vision Driver
+ #
+ # CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION is not set
+-
+-#
+-# Amlogic amprime_sl Drivers
+-#
+-
+-#
+-# Amlogic amprime_sl Driver
+-#
+-# CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_PRIME_SL is not set
+ CONFIG_AMLOGIC_MEDIA_GDC=y
+ 
+ #
+@@ -1798,12 +1782,11 @@ CONFIG_AMLOGIC_ESM=y
+ #
+ # DVB COMPAT support
+ #
+-# CONFIG_AMLOGIC_POWER is not set
+ 
+ #
+ # Multimedia Card support
+ #
+-# CONFIG_AMLOGIC_IRBLASTER_CORE is not set
++CONFIG_AMLOGIC_IRBLASTER=y
+ CONFIG_AMLOGIC_IIO=y
+ 
+ #
+@@ -1828,16 +1811,14 @@ CONFIG_AMLOGIC_MEMORY_EXTEND=y
+ CONFIG_AMLOGIC_RAMDUMP=y
+ CONFIG_AMLOGIC_CMA=y
+ # CONFIG_AMLOGIC_VMAP is not set
+-CONFIG_AMLOGIC_WATCHPOINT=y
+ CONFIG_AMLOGIC_GPIO_IRQ=y
+ 
+ #
+ # Amlogic ATV driver
+ #
+-# CONFIG_AMLOGIC_ATV_DEMOD is not set
++CONFIG_AMLOGIC_ATV_DEMOD=y
+ CONFIG_AMLOGIC_DEBUG=y
+ CONFIG_AMLOGIC_DEBUG_LOCKUP=y
+-CONFIG_AMLOGIC_DEBUG_ATRACE=y
+ 
+ #
+ # Amlogic defend img file update support
+@@ -3408,7 +3389,6 @@ CONFIG_DVB_MAX_ADAPTERS=8
+ CONFIG_RC_CORE=y
+ CONFIG_RC_MAP=y
+ CONFIG_RC_DECODERS=y
+-CONFIG_IR_IRMP_DECODER=y
+ CONFIG_LIRC=m
+ CONFIG_IR_LIRC_CODEC=m
+ CONFIG_IR_NEC_DECODER=m
+@@ -3434,7 +3414,6 @@ CONFIG_IR_MESON=m
+ # CONFIG_RC_LOOPBACK is not set
+ CONFIG_IR_GPIO_CIR=m
+ CONFIG_IR_GPIOPLUG_CIR=m
+-CONFIG_IR_HK_LIRC_HELPER=y
+ CONFIG_MEDIA_USB_SUPPORT=y
+ 
+ #
+@@ -4169,7 +4148,6 @@ CONFIG_AMLOGIC_SND_CODEC_AMLT9015=y
+ # CONFIG_AMLOGIC_SND_SOC_TAS5805 is not set
+ CONFIG_AMLOGIC_SND_CODEC_TXLX_ACODEC=y
+ # CONFIG_AMLOGIC_SND_CODEC_TL1_ACODEC is not set
+-# CONFIG_AMLOGIC_SND_SOC_TAS5782M is not set
+ CONFIG_AMLOGIC_SND_SOC_TAS5707=y
+ CONFIG_AMLOGIC_SND_SOC_TLV320ADC3101=y
+ CONFIG_AMLOGIC_SND_SOC_PCM186X=y
+diff --git a/arch/arm64/kernel/cpuinfo.c b/arch/arm64/kernel/cpuinfo.c
+index 3ab870c98e35..dcc983196aa2 100644
+--- a/arch/arm64/kernel/cpuinfo.c
++++ b/arch/arm64/kernel/cpuinfo.c
+@@ -37,9 +37,6 @@
+ #include <linux/amlogic/cpu_version.h>
+ #endif
+ 
+-#ifdef CONFIG_ARCH_MESON64_ODROID_COMMON
+-#include <linux/amlogic/efuse.h>
+-#endif
+ 
+ /*
+  * In case the boot CPU is hotpluggable, we record its initial state and
+@@ -167,41 +164,12 @@ static int c_show(struct seq_file *m, void *v)
+ 		seq_printf(m, "CPU part\t: 0x%03x\n", MIDR_PARTNUM(midr));
+ 		seq_printf(m, "CPU revision\t: %d\n\n", MIDR_REVISION(midr));
+ 	}
+-#ifdef CONFIG_ARCH_MESON64_ODROID_COMMON
+-#ifdef CONFIG_AMLOGIC_CPU_INFO
+-	cpuinfo_get_chipid(chipid, CHIPID_LEN);
+-	seq_puts(m, "CPU info\t: ");
+-	for (i = 0; i < 16; i++)
+-		seq_printf(m, "%02x", chipid[i]);
+-	seq_puts(m, "\n");
+-#endif
+-	{
+-		int ret;
+-		char uuid[32];
+-		loff_t pos = 0;
+-
+-		seq_puts(m, "Serial\t\t: ");
+-
+-		ret = efuse_read_usr(uuid, sizeof(uuid), &pos);
+-		if ((ret < 0) || (ret != sizeof(uuid))) {
+-			seq_puts(m, "Unknown\n");
+-		} else {
+-			for (i = 0; i < sizeof(uuid); i++) {
+-				if ((i == 8) || (i == 12) || (i == 16) || (i == 20))
+-					seq_putc(m, '-');
+-				seq_printf(m, "%c", uuid[i]);
+-			}
+-			seq_putc(m, '\n');
+-		}
+-	}
+-#else
+ #ifdef CONFIG_AMLOGIC_CPU_INFO
+ 	cpuinfo_get_chipid(chipid, CHIPID_LEN);
+ 	seq_puts(m, "Serial\t\t: ");
+ 	for (i = 0; i < 16; i++)
+ 		seq_printf(m, "%02x", chipid[i]);
+ 	seq_puts(m, "\n");
+-#endif
+ #endif
+ 	system_rev = 0x0400;
+ 	seq_printf(m, "Hardware\t: %s\n", machine_name);
+
+
+
+
+diff --git a/drivers/amlogic/Media.mk b/drivers/amlogic/Media.mk
+deleted file mode 100644
+index eba1e1ed3612..000000000000
+--- a/drivers/amlogic/Media.mk
++++ /dev/null
+@@ -1,112 +0,0 @@
+-ifeq ($(KERNEL_A32_SUPPORT), true)
+-KERNEL_ARCH := arm
+-else
+-KERNEL_ARCH := arm64
+-endif
+-
+-CONFIGS := CONFIG_AMLOGIC_MEDIA_VDEC_MPEG12=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_MPEG2_MULTI=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_MPEG4=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_MPEG4_MULTI=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_VC1=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_H264=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_H264_MULTI=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_H264_MVC=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_H265=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_VP9=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_MJPEG=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_MJPEG_MULTI=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_REAL=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_AVS=m \
+-	CONFIG_AMLOGIC_MEDIA_VDEC_AVS2=m \
+-	CONFIG_AMLOGIC_MEDIA_VENC_H264=m \
+-	CONFIG_AMLOGIC_MEDIA_VENC_H265=m \
+-	CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION=y
+-        CONFIG_AMLOGIC_MEDIA_GE2D=y
+-
+-define copy-media-modules
+-$(foreach m, $(shell find $(strip $(1)) -name "*.ko"),\
+-	$(shell cp $(m) $(strip $(2)) -rfa))
+-endef
+-
+-ifneq (,$(TOP))
+-KDIR := $(shell pwd)/$(PRODUCT_OUT)/obj/KERNEL_OBJ/
+-
+-MEDIA_DRIVERS := $(TOP)/hardware/amlogic/media_modules/drivers
+-ifeq (,$(wildcard $(MEDIA_DRIVERS)))
+-$(error No find the dir of drivers.)
+-endif
+-
+-INCLUDE := $(MEDIA_DRIVERS)/include
+-ifeq (,$(wildcard $(INCLUDE)))
+-$(error No find the dir of include.)
+-endif
+-
+-MEDIA_MODULES := $(shell pwd)/$(PRODUCT_OUT)/obj/media_modules
+-ifeq (,$(wildcard $(MEDIA_MODULES)))
+-$(shell mkdir $(MEDIA_MODULES) -p)
+-endif
+-
+-MODS_OUT := $(shell pwd)/$(PRODUCT_OUT)/obj/lib_vendor
+-ifeq (,$(wildcard $(MODS_OUT)))
+-$(shell mkdir $(MODS_OUT) -p)
+-endif
+-
+-UCODE_OUT := $(shell pwd)/$(PRODUCT_OUT)/$(TARGET_COPY_OUT_VENDOR)/lib/firmware/video
+-ifeq (,$(wildcard $(UCODE_OUT)))
+-$(shell mkdir $(UCODE_OUT) -p)
+-endif
+-
+-$(shell cp $(MEDIA_DRIVERS)/../firmware/* $(UCODE_OUT) -rfa)
+-$(shell cp $(MEDIA_DRIVERS)/* $(MEDIA_MODULES) -rfa)
+-
+-define media-modules
+-	@$(MAKE) -C $(KDIR) M=$(MEDIA_MODULES) ARCH=$(KERNEL_ARCH) \
+-	CROSS_COMPILE=$(PREFIX_CROSS_COMPILE) $(CONFIGS) \
+-	EXTRA_CFLAGS+=-I$(INCLUDE) modules; \
+-	find $(MEDIA_MODULES) -name "*.ko" | xargs -i cp {} $(MODS_OUT)
+-endef
+-
+-else
+-KDIR := $(PWD)/kernel
+-ifeq (,$(wildcard $(KDIR)))
+-$(error No find the dir of kernel.)
+-endif
+-
+-MEDIA_DRIVERS := $(PWD)/media_modules/drivers
+-ifeq (,$(wildcard $(MEDIA_DRIVERS)))
+-$(error No find the dir of drivers.)
+-endif
+-
+-INCLUDE := $(MEDIA_DRIVERS)/include
+-ifeq (,$(wildcard $(INCLUDE)))
+-$(error No find the dir of include.)
+-endif
+-
+-MODS_OUT ?= $(MEDIA_DRIVERS)/../modules
+-ifeq (,$(wildcard $(MODS_OUT)))
+-$(shell mkdir $(MODS_OUT) -p)
+-endif
+-
+-ifeq ($(KERNEL_A32_SUPPORT), true)
+-TOOLS := /opt/gcc-linaro-6.3.1-2017.02-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+-else
+-TOOLS := /opt/gcc-linaro-5.3-2016.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+-endif
+-
+-modules:
+-	@$(MAKE) -C $(KDIR) M=$(MEDIA_DRIVERS) ARCH=$(KERNEL_ARCH) \
+-	CROSS_COMPILE=$(TOOLS) $(CONFIGS) \
+-	EXTRA_CFLAGS+=-I$(INCLUDE) -j64
+-
+-copy-modules:
+-	@echo "start copying media modules."
+-	mkdir -p $(MODS_OUT)
+-	$(call copy-media-modules, $(MEDIA_DRIVERS), $(MODS_OUT))
+-
+-all: modules copy-modules
+-
+-clean:
+-	$(MAKE) -C $(KDIR) M=$(MEDIA_DRIVERS) ARCH=$(KERNEL_ARCH) clean
+-
+-endif
+
+
+
+
+diff --git a/drivers/amlogic/cpufreq/meson-cpufreq.c b/drivers/amlogic/cpufreq/meson-cpufreq.c
+index 8905b994f392..17c3532ca920 100644
+--- a/drivers/amlogic/cpufreq/meson-cpufreq.c
++++ b/drivers/amlogic/cpufreq/meson-cpufreq.c
+@@ -48,8 +48,8 @@
+ #define OF_NODE_CPU_OPP_1	"/cpu_opp_table1/"	/* Core A73 */
+ 
+ static unsigned long max_freq[2] = {
+-		1896000, /* defalut freq for A53 is 1.896GHz */
+-		1800000  /* defalut freq for A73 is 1.800GHz */
++		0, /* freq for A53 */
++		0  /* freq for A73 */
+ };
+ #endif
+ 
+diff --git a/drivers/amlogic/input/remote/remote_meson.c b/drivers/amlogic/input/remote/remote_meson.c
+index f53e1399c95d..2e75ecb860d2 100644
+--- a/drivers/amlogic/input/remote/remote_meson.c
++++ b/drivers/amlogic/input/remote/remote_meson.c
+@@ -621,9 +621,6 @@ static int ir_get_devtree_pdata(struct platform_device *pdev)
+ 		chip->protocol = 1;
+ 	}
+ 	dev_info(chip->dev, "protocol = 0x%x\n", chip->protocol);
+-#if defined(CONFIG_IR_HK_LIRC_HELPER)
+-	remote_wakeup_decode_type(chip->protocol);
+-#endif
+ 
+ 	ret = of_property_read_u32(pdev->dev.of_node,
+ 			"led_blink", &chip->r_dev->led_blink);
+diff --git a/drivers/amlogic/input/remote/remote_meson.h b/drivers/amlogic/input/remote/remote_meson.h
+index 79dcb5e1c50e..aa7538a74582 100644
+--- a/drivers/amlogic/input/remote/remote_meson.h
++++ b/drivers/amlogic/input/remote/remote_meson.h
+@@ -221,10 +221,6 @@ int ir_scancode_sort(struct ir_map_tab *ir_map);
+ struct ir_map_tab_list *seek_map_tab(struct remote_chip *chip, int custom_code);
+ const struct aml_remote_reg_proto **ir_get_proto_reg(void);
+ void ir_tab_free(struct ir_map_tab_list *ir_map_list);
+-
+-#if defined(CONFIG_IR_HK_LIRC_HELPER)
+-extern void remote_wakeup_decode_type(int dec_type);
+-#endif
+ int remote_pulses_malloc(struct remote_chip *chip);
+ void remote_pulses_free(struct remote_chip *chip);
+ void demod_reset(struct remote_chip *chip);
+diff --git a/drivers/amlogic/media/osd/osd_fb.c b/drivers/amlogic/media/osd/osd_fb.c
+index cf03b0f212d8..133531b4bf22 100644
+--- a/drivers/amlogic/media/osd/osd_fb.c
++++ b/drivers/amlogic/media/osd/osd_fb.c
+@@ -226,11 +226,11 @@ static struct fb_var_screeninfo fb_def_var[] = {
+ 		.yoffset         = 0,
+ 		.bits_per_pixel = 32,
+ 		.grayscale       = 0,
+-		.red             = {16, 8, 0},
+-		.green           = {8, 8, 0},
+-		.blue            = {0, 8, 0},
+-		.transp          = {24, 0, 0},
+-		.nonstd          = 1,
++		.red             = {0, 0, 0},
++		.green           = {0, 0, 0},
++		.blue            = {0, 0, 0},
++		.transp          = {0, 0, 0},
++		.nonstd          = 0,
+ 		.activate        = FB_ACTIVATE_NOW,
+ 		.height          = -1,
+ 		.width           = -1,
+@@ -746,11 +746,6 @@ static int osd_set_par(struct fb_info *info)
+ 
+ 	output_index = get_output_device_id(fbdev->fb_index);
+ 
+-#ifdef CONFIG_ARCH_MESON64_ODROIDN2
+-	info->var.xres_virtual = info->var.xres;
+-	info->var.yres_virtual = info->var.yres;
+-#endif
+-
+ #ifdef CONFIG_ARCH_MESON64_ODROIDN2
+ 	info->var.xres_virtual = info->var.xres;
+ 	info->var.yres_virtual = info->var.yres;
+diff --git a/drivers/amlogic/media/osd/osd_hw.c b/drivers/amlogic/media/osd/osd_hw.c
+index 6152ca9e5a6f..6593d5852822 100644
+--- a/drivers/amlogic/media/osd/osd_hw.c
++++ b/drivers/amlogic/media/osd/osd_hw.c
+@@ -3411,12 +3411,12 @@ static void osd_set_two_ports(bool set)
+ 
+ 	if (set) {
+ 		data32[0] = osd_reg_read(VPP_RDARB_MODE);
+-		data32[1] = osd_reg_read(VPU_RDARB_MODE_L2C1);
++		data32[1] = osd_reg_read(VPU_WRARB_MODE_L2C1);
+ 		osd_reg_set_bits(VPP_RDARB_MODE, 2, 20, 8);
+-		osd_reg_set_bits(VPU_RDARB_MODE_L2C1, 2, 16, 8);
++		osd_reg_set_bits(VPU_WRARB_MODE_L2C1, 2, 16, 4);
+ 	} else {
+ 		osd_reg_write(VPP_RDARB_MODE, data32[0]);
+-		osd_reg_write(VPU_RDARB_MODE_L2C1, data32[1]);
++		osd_reg_write(VPU_WRARB_MODE_L2C1, data32[1]);
+ 	}
+ }
+ 
+diff --git a/drivers/amlogic/media/osd/osd_reg.h b/drivers/amlogic/media/osd/osd_reg.h
+index e2218bd572c1..eee86b89baf1 100644
+--- a/drivers/amlogic/media/osd/osd_reg.h
++++ b/drivers/amlogic/media/osd/osd_reg.h
+@@ -1424,6 +1424,7 @@
+ #define VPP_POST_BLEND_DUMMY_ALPHA                 0x3969
+ #define VPP_RDARB_MODE                             0x3978
+ #define VPP_RDARB_REQEN_SLV                        0x3979
++#define VPU_WRARB_MODE_L2C1                        0x27a2
+ #define VPU_RDARB_MODE_L2C1                        0x279d
+ 
+ /*VIU2 osd1 reg*/
+diff --git a/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hdmi_tx_main.c b/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hdmi_tx_main.c
+index b0d95c65b668..4a9dba45e22a 100644
+--- a/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hdmi_tx_main.c
++++ b/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hdmi_tx_main.c
+@@ -5035,6 +5035,16 @@ static void check_hdmiuboot_attr(char *token)
+ 	}
+ }
+ 
++static int __init hdmitx_boot_android_device(char *str)
++{
++	hdmitx_device.cec_func_config = 0x3f;
++	pr_info("hdmitx: android device found, setting cec mode to:0x%x\n",
++		hdmitx_device.cec_func_config);
++	return 0;
++}
++
++__setup("androidboot.hardware=", hdmitx_boot_android_device);
++
+ static  int __init hdmitx_boot_para_setup(char *s)
+ {
+ 	char separator[] = {' ', ',', ';', 0x0};
+@@ -5062,7 +5072,7 @@ static  int __init hdmitx_boot_para_setup(char *s)
+ 				pr_info("HDMI hdmi_cec_func_config:0x%x\n",
+ 					hdmitx_device.cec_func_config);
+ 			}
+-			check_hdmiuboot_attr(token);
++			/*check_hdmiuboot_attr(token); /**/
+ 		}
+ 		offset = token_offset;
+ 	} while (token);
+diff --git a/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hw/hw_clk.c b/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hw/hw_clk.c
+index bf1dc31b9342..27b2281b4c13 100644
+--- a/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hw/hw_clk.c
++++ b/drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hw/hw_clk.c
+@@ -975,8 +975,9 @@ static void hdmitx_set_clk_(struct hdmitx_dev *hdev)
+ 	enum hdmi_color_depth cd;
+ 	struct hdmi_cea_timing *custom_timing;
+ 
+-	if (hdev->cur_video_param->color_depth && hdev->cur_video_param->color_depth > 0)
+-		cd = hdev->cur_video_param->color_depth;
++	if (hdev->cur_video_param && hdev->cur_video_param->color_depth
++		&& hdev->cur_video_param->color_depth > 0)
++			cd = hdev->cur_video_param->color_depth;
+ 	else
+ 		cd = hdev->para->cd;
+ 	frac_rate = hdev->frac_rate_policy;
+diff --git a/drivers/amlogic/media/vout/lcd/lcd_vout.c b/drivers/amlogic/media/vout/lcd/lcd_vout.c
+index f6894f0314ba..b49246bcdf77 100644
+--- a/drivers/amlogic/media/vout/lcd/lcd_vout.c
++++ b/drivers/amlogic/media/vout/lcd/lcd_vout.c
+@@ -496,8 +496,8 @@ static inline void lcd_vsync_handler(void)
+ 	if (lcd_driver == NULL)
+ 		return;
+ 
+-#ifdef CONFIG_AMLOGIC_LCD_TABLET
+ 	pconf = lcd_driver->lcd_config;
++#ifdef CONFIG_AMLOGIC_LCD_TABLET
+ 	if (pconf->lcd_control.mipi_config->dread) {
+ 		if (pconf->lcd_control.mipi_config->dread->flag) {
+ 			lcd_mipi_test_read(
+diff --git a/drivers/amlogic/media_modules/Kconfig b/drivers/amlogic/media_modules/Kconfig
+index 68118ed5d30a..a220133d48b9 100644
+--- a/drivers/amlogic/media_modules/Kconfig
++++ b/drivers/amlogic/media_modules/Kconfig
+@@ -1,95 +1,107 @@
++#
++# Amlogic Video Decoders configuration
++#
++
++menu "Video Decoders"
++	depends on AMLOGIC_MEDIA_VIDEO
++
++
+ config AMLOGIC_MEDIA_VDEC_MPEG12
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic MPEG1/2 Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	   Driver for mpeg1/2 video decoder.
++	   select AM_PTSSERVER...
++	   select for build for support mpeg1 &2
+ 		
+ config AMLOGIC_MEDIA_VDEC_MPEG4
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic MPEG4 Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	  Driver for mpeg4 video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_MPEG4_MULTI
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic MMPEG4 Video Decoder"
++	default n
+ 	help
+-		Enables amlogic video decoder
+-		
++	  Driver for Mmpeg4 video decoder.
++
+ config AMLOGIC_MEDIA_VDEC_VC1
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic VC1 Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	  Driver for vc1 video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_H264
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic H264 Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	  Driver for h264 video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_H264_MULTI
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic MH264 Video Decoder"
++	default n
+ 	help
+-		Enables amlogic video decoder
++	  Driver for Mh264 video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_H264_MVC
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic H264MVC Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	  Driver for h264mvc video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_H265
+-	tristate "Amlogic Video decoder"
+-	default m
++        bool "Amlogic H265 Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++          Driver for h265 video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_VP9
+-	tristate "Amlogic Video decoder"
+-	default m
++        bool "Amlogic VP9 Video Decoder"
++        default y
+ 	help
+-		Enables amlogic video decoder
++          Driver for vp9 video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_MJPEG
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic Motion JPEG Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	  Driver for motion jpeg video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_MJPEG_MULTI
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic Motion JPEG Video Decoder"
++	default y
+ 	help
+-		Enables amlogic video decoder
++	  Driver for motion jpeg video decoder.
+ 		
+ config AMLOGIC_MEDIA_VDEC_REAL
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic Real Video decoder"
++	default y
+ 	help
+ 		Enables amlogic video decoder
+ 		
+ config AMLOGIC_MEDIA_VDEC_AVS
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic Video AVS decoder"
++	default n
+ 	help
+ 		Enables amlogic video decoder
+ 		
+ config AMLOGIC_MEDIA_VDEC_AVS2
+-	tristate "Amlogic Video decoder"
+-	default m
++	bool "Amlogic Video AVS2 decoder"
++	default n
+ 	help
+ 		Enables amlogic video decoder
+ 		
+ config AMLOGIC_MEDIA_VENC_H264
+-	tristate "Amlogic Video decoder"
+-	default m
++	boolean "Amlogic H264Encoder support"
++	default n
+ 	help
+-		Enables amlogic video decoder
++		Internal H264 Encoder driver
+ 		
+ config AMLOGIC_MEDIA_VENC_H265
+-	tristate "Amlogic Video decoder"
+-	default m
++	boolean "Amlogic Hevc Encoder support"
++	default n
+ 	help
+-		Enables amlogic video decoder
++		Internal Hevc Encoder driver
++
++endmenu
+diff --git a/drivers/amlogic/media_modules/common/firmware/Makefile b/drivers/amlogic/media_modules/common/firmware/Makefile
+index 748039cc1f71..e5f6df48a5c6 100644
+--- a/drivers/amlogic/media_modules/common/firmware/Makefile
++++ b/drivers/amlogic/media_modules/common/firmware/Makefile
+@@ -1,3 +1,3 @@
+-obj-m	+=	firmware.o
++obj-y	+=	firmware.o
+ firmware-objs	+=	firmware_drv.o
+ firmware-objs	+=	firmware_type.o
+diff --git a/drivers/amlogic/media_modules/common/media_clock/Makefile b/drivers/amlogic/media_modules/common/media_clock/Makefile
+index 975b5e57c452..06c30d46cd34 100644
+--- a/drivers/amlogic/media_modules/common/media_clock/Makefile
++++ b/drivers/amlogic/media_modules/common/media_clock/Makefile
+@@ -1,4 +1,4 @@
+-obj-m	+=	media_clock.o
++obj-y	+=	media_clock.o
+ media_clock-objs += ../chips/chips.o
+ media_clock-objs += clk/clkg12.o
+ media_clock-objs += clk/clk.o
+diff --git a/drivers/amlogic/media_modules/frame_provider/decoder/avs2/vavs2.c b/drivers/amlogic/media_modules/frame_provider/decoder/avs2/vavs2.c
+index cc221610d586..591bf528722a 100644
+--- a/drivers/amlogic/media_modules/frame_provider/decoder/avs2/vavs2.c
++++ b/drivers/amlogic/media_modules/frame_provider/decoder/avs2/vavs2.c
+@@ -261,7 +261,7 @@ static u32 again_threshold = 0x40;
+ 					  4, (1/2):(1/2) ratio
+ 					0x10, double write only
+ */
+-static u32 double_write_mode;
++static u32 double_write_mode = 0x200;
+ 
+ #define DRIVER_NAME "amvdec_avs2"
+ #define MODULE_NAME "amvdec_avs2"
+@@ -880,6 +880,15 @@ static int get_double_write_mode(struct AVS2Decoder_s *dec)
+ 		else
+ 			dw = 0x1; /*1:1*/
+ 
++		return dw;
++	} else if (valid_dw_mode == 0x200) {
++		int w = dec->avs2_dec.img.width;
++		int h = dec->avs2_dec.img.height;
++		if (w > 4096 && h > 2176)
++			dw = 0x4; /*1:2*/
++		else
++			dw = 0x0; /*off*/
++
+ 		return dw;
+ 	}
+ 
+@@ -899,6 +908,16 @@ static int get_double_write_mode_init(struct AVS2Decoder_s *dec)
+ 		else
+ 			dw = 0x1; /*1:1*/
+ 
++		return dw;
++	} else if (valid_dw_mode == 0x200) {
++		u32 dw;
++		int w = dec->init_pic_w;
++		int h = dec->init_pic_h;
++		if (w > 4096 && h > 2176)
++			dw = 0x4; /*1:2*/
++		else
++			dw = 0x0; /*off*/
++
+ 		return dw;
+ 	}
+ 	return valid_dw_mode;
+diff --git a/drivers/amlogic/media_modules/frame_provider/decoder/h265/vh265.c b/drivers/amlogic/media_modules/frame_provider/decoder/h265/vh265.c
+index 618c13340744..2dfacc430010 100644
+--- a/drivers/amlogic/media_modules/frame_provider/decoder/h265/vh265.c
++++ b/drivers/amlogic/media_modules/frame_provider/decoder/h265/vh265.c
+@@ -230,7 +230,7 @@ static const char * const matrix_coeffs_names[] = {
+  *	3, (1/4):(1/4) ratio, with both compressed frame included
+  *	0x10, double write only
+  */
+-static u32 double_write_mode;
++static u32 double_write_mode = 0x200;
+ 
+ /*#define DECOMP_HEADR_SURGENT*/
+ 
+@@ -1902,7 +1902,13 @@ static int get_double_write_mode(struct hevc_state_s *hevc)
+ 			dw = 0x4; /*1:2*/
+ 		else
+ 			dw = 0x1; /*1:1*/
+-
++	} else if (valid_dw_mode == 0x200) {
++		int w = hevc->pic_w;
++		int h = hevc->pic_h;
++		if (w > 4096 && h > 2176)
++			dw = 0x4; /*1:2*/
++		else
++			dw = 0x0; /*off*/
+ 	} else
+ 		dw = valid_dw_mode;
+ 	return dw;
+diff --git a/drivers/amlogic/media_modules/frame_provider/decoder/utils/Makefile b/drivers/amlogic/media_modules/frame_provider/decoder/utils/Makefile
+index ee7dbf425f11..0fd01741db31 100644
+--- a/drivers/amlogic/media_modules/frame_provider/decoder/utils/Makefile
++++ b/drivers/amlogic/media_modules/frame_provider/decoder/utils/Makefile
+@@ -1,4 +1,4 @@
+-obj-m	+=	decoder_common.o
++obj-y	+=	decoder_common.o
+ decoder_common-objs	+=	utils.o vdec.o vdec_input.o amvdec.o
+ decoder_common-objs	+=	decoder_mmu_box.o decoder_bmmu_box.o
+ decoder_common-objs	+=	config_parser.o secprot.o vdec_profile.o
+diff --git a/drivers/amlogic/media_modules/frame_provider/decoder/vp9/vvp9.c b/drivers/amlogic/media_modules/frame_provider/decoder/vp9/vvp9.c
+index cba58451788c..1035669248b3 100644
+--- a/drivers/amlogic/media_modules/frame_provider/decoder/vp9/vvp9.c
++++ b/drivers/amlogic/media_modules/frame_provider/decoder/vp9/vvp9.c
+@@ -165,7 +165,7 @@ static u32 mv_buf_margin;
+ 					  4, (1/2):(1/2) ratio
+ 					0x10, double write only
+ */
+-static u32 double_write_mode;
++static u32 double_write_mode = 0x200;
+ 
+ #define DRIVER_NAME "amvdec_vp9"
+ #define MODULE_NAME "amvdec_vp9"
+@@ -1511,7 +1511,7 @@ static int get_double_write_mode(struct VP9Decoder_s *pbi)
+ {
+ 	u32 valid_dw_mode = get_valid_double_write_mode(pbi);
+ 	u32 dw;
+-	if (valid_dw_mode == 0x100) {
++	if (valid_dw_mode == 0x100 || valid_dw_mode == 0x200) {
+ 		struct VP9_Common_s *cm = &pbi->common;
+ 		struct PIC_BUFFER_CONFIG_s *cur_pic_config;
+ 		int w, h;
+@@ -1520,11 +1520,18 @@ static int get_double_write_mode(struct VP9Decoder_s *pbi)
+ 			return 1;/*no valid frame,*/
+ 		cur_pic_config = &cm->cur_frame->buf;
+ 		w = cur_pic_config->y_crop_width;
+-		h = cur_pic_config->y_crop_width;
+-		if (w > 1920 && h > 1088)
+-			dw = 0x4; /*1:2*/
+-		else
+-			dw = 0x1; /*1:1*/
++		h = cur_pic_config->y_crop_height;
++		if (valid_dw_mode == 0x100) {
++			if (w > 1920 && h > 1088)
++				dw = 0x4; /*1:2*/
++			else
++				dw = 0x1; /*1:1*/
++		} else {
++			if (w > 4096 && h > 2176)
++				dw = 0x4; /*1:2*/
++			else
++				dw = 0x0; /*off*/
++		}
+ 
+ 		return dw;
+ 	}
+@@ -1545,6 +1552,16 @@ static int get_double_write_mode_init(struct VP9Decoder_s *pbi)
+ 		else
+ 			dw = 0x1; /*1:1*/
+ 
++		return dw;
++	} else if (valid_dw_mode == 0x200) {
++		u32 dw;
++		int w = pbi->init_pic_w;
++		int h = pbi->init_pic_h;
++		if (w > 4096 && h > 2176)
++			dw = 0x4; /*1:2*/
++		else
++			dw = 0x0; /*off*/
++
+ 		return dw;
+ 	}
+ 	return valid_dw_mode;
+@@ -6889,7 +6906,7 @@ static int prepare_display_buf(struct VP9Decoder_s *pbi,
+ 		kfifo_put(&pbi->display_q, (const struct vframe_s *)vf);
+ 		ATRACE_COUNTER(MODULE_NAME, vf->pts);
+ 		pbi->vf_pre_count++;
+-#ifndef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
++#ifdef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
+ 		/*count info*/
+ 		gvs->frame_dur = pbi->frame_dur;
+ 		vdec_count_info(gvs, 0, stream_offset);
+@@ -7816,7 +7833,7 @@ int vvp9_dec_status(struct vdec_s *vdec, struct vdec_info *vstatus)
+ 	vstatus->error_count = 0;
+ 	vstatus->status = vp9->stat | vp9->fatal_error;
+ 	vstatus->frame_dur = vp9->frame_dur;
+-#ifndef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
++#if 0	//#ifndef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
+ 	vstatus->bit_rate = gvs->bit_rate;
+ 	vstatus->frame_data = gvs->frame_data;
+ 	vstatus->total_data = gvs->total_data;
+diff --git a/drivers/amlogic/media_modules/frame_sink/encoder/h264/Makefile b/drivers/amlogic/media_modules/frame_sink/encoder/h264/Makefile
+index c12d7c3d86b2..5d252f07e465 100644
+--- a/drivers/amlogic/media_modules/frame_sink/encoder/h264/Makefile
++++ b/drivers/amlogic/media_modules/frame_sink/encoder/h264/Makefile
+@@ -1 +1 @@
+-obj-m	+=	encoder.o
++obj-y	+=	encoder.o
+diff --git a/drivers/amlogic/media_modules/frame_sink/encoder/h265/Makefile b/drivers/amlogic/media_modules/frame_sink/encoder/h265/Makefile
+index e7414bfb8614..f67cab3420bd 100644
+--- a/drivers/amlogic/media_modules/frame_sink/encoder/h265/Makefile
++++ b/drivers/amlogic/media_modules/frame_sink/encoder/h265/Makefile
+@@ -1 +1 @@
+-obj-m	+=	vpu.o
++obj-y	+=	vpu.o
+diff --git a/drivers/amlogic/media_modules/stream_input/Makefile b/drivers/amlogic/media_modules/stream_input/Makefile
+index 73dfd13058ab..366c3c3eb65f 100644
+--- a/drivers/amlogic/media_modules/stream_input/Makefile
++++ b/drivers/amlogic/media_modules/stream_input/Makefile
+@@ -1,4 +1,4 @@
+-obj-m	+=	 stream_input.o
++obj-y	+=	 stream_input.o
+ 
+ stream_input-objs	+=	amports/amstream.o
+ stream_input-objs	+=	amports/adec.o
+@@ -10,8 +10,8 @@ stream_input-objs	+=	parser/psparser.o
+ stream_input-objs	+=	parser/rmparser.o
+ stream_input-objs	+=	subtitle/subtitle.o
+ 
+-obj-$(CONFIG_AMLOGIC_DVB)   += parser/hw_demux/
+-#obj-y 	+= 	tv_frontend/
++# obj-y += parser/hw_demux/
++# obj-y 	+= 	tv_frontend/
+ # obj-y	+=	box-frontend/avl6211/
+ # obj-y	+=	box-frontend/atbm8881/
+ # obj-y	+=	box-frontend/avl68xx/
+diff --git a/drivers/amlogic/media_modules/stream_input/parser/hw_demux/Makefile b/drivers/amlogic/media_modules/stream_input/parser/hw_demux/Makefile
+index 594f78f42e12..77a83c00b01f 100644
+--- a/drivers/amlogic/media_modules/stream_input/parser/hw_demux/Makefile
++++ b/drivers/amlogic/media_modules/stream_input/parser/hw_demux/Makefile
+@@ -1,4 +1,4 @@
+-obj-m	+= aml_hardware_dmx.o
++obj-y	+= aml_hardware_dmx.o
+ 
+ ccflags-y += -I$(srctree)/drivers/media/dvb-core -I$(srctree)/drivers/gpio -I$(srctree)/include -DENABLE_DEMUX_DRIVER
+ 
+diff --git a/drivers/amlogic/media_modules/stream_input/parser/hw_demux/dvb_ci/Makefile b/drivers/amlogic/media_modules/stream_input/parser/hw_demux/dvb_ci/Makefile
+index bbfbdd48e16a..f73a9da0f043 100644
+--- a/drivers/amlogic/media_modules/stream_input/parser/hw_demux/dvb_ci/Makefile
++++ b/drivers/amlogic/media_modules/stream_input/parser/hw_demux/dvb_ci/Makefile
+@@ -1,4 +1,4 @@
+-obj-m += ci.o cimax-usb.o
++obj-y += ci.o cimax-usb.o
+ 
+ ci-objs = $(amlci-objs) $(cimax-objs)
+ 
+diff --git a/drivers/amlogic/media_modules/stream_input/tv_frontend/Makefile b/drivers/amlogic/media_modules/stream_input/tv_frontend/Makefile
+index 404c513d23f2..fde5a45a5f14 100644
+--- a/drivers/amlogic/media_modules/stream_input/tv_frontend/Makefile
++++ b/drivers/amlogic/media_modules/stream_input/tv_frontend/Makefile
+@@ -1,4 +1,4 @@
+-obj-m	+= aml_hardware_fe.o
++obj-y	+= aml_hardware_fe.o
+ 
+ ccflags-y += -I$(srctree)/drivers/media/dvb-core -I$(srctree)/drivers/gpio -I$(srctree)/include
+ 
+diff --git a/drivers/amlogic/mmc/emmc_partitions.c b/drivers/amlogic/mmc/emmc_partitions.c
+index 12b11e52dedc..90041f0d4c18 100644
+--- a/drivers/amlogic/mmc/emmc_partitions.c
++++ b/drivers/amlogic/mmc/emmc_partitions.c
+@@ -716,17 +716,12 @@ static int mmc_read_partition_tbl(struct mmc_card *card,
+ 	memset(pt_fmt, 0, sizeof(struct mmc_partitions_fmt));
+ 	memset(buf, 0, blk_size);
+ 
+-#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
+-	/* LBA unit */
+-	start_blk = 2048;
+-#else
+ 	start_blk = get_reserve_partition_off(card);
+ 	if (start_blk < 0) {
+ 		ret = -EINVAL;
+ 		goto exit_err;
+ 	}
+ 	start_blk >>= bit;
+-#endif
+ 	size = sizeof(struct mmc_partitions_fmt);
+ 	dst = (char *)pt_fmt;
+ 	if (size >= blk_size) {
+@@ -934,38 +929,25 @@ static int add_emmc_partition(struct gendisk *disk,
+ 	uint64_t offset, size, cap;
+ 	struct partitions *pp;
+ 	struct proc_dir_entry *proc_card;
+-#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
+-	int shift = 0;
+-#else
+-	int shift = 9;
+-#endif
+-	int partno = 1;
+ 
+ 	pr_info("add_emmc_partition\n");
+ 
+ 	cap = get_capacity(disk); /* unit:512 bytes */
+ 	for (i = 0; i < pt_fmt->part_num; i++) {
+ 		pp = &(pt_fmt->partitions[i]);
+-#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
+-		if (pp->name[0] == '@') {
+-			/* It's hiden partition */
+-			continue;
+-		}
+-#endif
+-
+-		offset = pp->offset >> shift; /* unit:512 bytes */
+-		size = pp->size >> shift; /* unit:512 bytes */
++		offset = pp->offset >> 9; /* unit:512 bytes */
++		size = pp->size >> 9; /* unit:512 bytes */
+ 		if ((offset + size) <= cap) {
+-			ret = add_emmc_each_part(disk, partno, offset,
+-					size, 0, pp->name);
++			char temp_buf[256];
++			sprintf(temp_buf, "/partitions/%s", pp->name);
++			if (of_find_node_by_path(temp_buf))
++				ret = add_emmc_each_part(disk, 1+i, offset,
++						size, 0, pp->name);
+ 
+ 			pr_info("[%sp%02d] %20s  offset 0x%012llx, size 0x%012llx %s\n",
+-					disk->disk_name, partno,
+-					pp->name, offset<<shift,
+-					size << shift,
+-					IS_ERR(ret) ? "add fail":"");
+-			/* increase the partition number */
+-			partno++;
++					disk->disk_name, 1+i,
++					pp->name, offset<<9,
++					size<<9, IS_ERR(ret) ? "add fail":"");
+ 		} else {
+ 			pr_info("[%s] %s: partition exceeds device capacity:\n",
+ 					__func__, disk->disk_name);
+@@ -1163,6 +1145,9 @@ int aml_emmc_partition_ops(struct mmc_card *card, struct gendisk *disk)
+ 	if (is_card_emmc(card) == 0) /* not emmc, nothing to do */
+ 		return 0;
+ 
++	if (!of_find_node_by_path("/partitions"))
++		return 0;
++
+ 	buffer = kmalloc(512, GFP_KERNEL);
+ 	if (!buffer)
+ 		return -ENOMEM;
+
+
+
+
+
+
+
+
+diff --git a/drivers/mmc/card/block.c b/drivers/mmc/card/block.c
+index fcd27b8d748d..bc1a5f960a2e 100644
+--- a/drivers/mmc/card/block.c
++++ b/drivers/mmc/card/block.c
+@@ -3034,7 +3034,7 @@ static int mmc_validate_mpt_partition(struct mmc_card *card)
+ 	mmc_claim_host(card->host);
+ 
+ 	/* FIXME: fix up the magic number for start block to check MPT partition */
+-	ret = mmc_read_internal(card, 8184, 1, buf);
++	ret = mmc_read_internal(card, get_reserve_partition_off(card) / 512, 1, buf);
+ 	if (ret == 0) {
+ 		if (strncmp(buf, MMC_PARTITIONS_MAGIC,
+ 			sizeof(((struct mmc_partitions_fmt*)0)->magic)) != 0) {
+@@ -3222,4 +3222,3 @@ module_exit(mmc_blk_exit);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Multimedia Card (MMC) block device driver");
+-
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+index 68854f8123ce..13bb24c6ec99 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_platform.c
+@@ -198,6 +198,41 @@ static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_DWMAC_MESON
++u8 DEFMAC[] = {0, 0, 0, 0, 0, 0};
++bool g_mac_addr_setup = false;
++static unsigned char chartonum(char c)
++{
++	if (c >= '0' && c <= '9')
++		return c - '0';
++	if (c >= 'A' && c <= 'F')
++		return (c - 'A') + 10;
++	if (c >= 'a' && c <= 'f')
++		return (c - 'a') + 10;
++	return 0;
++
++}
++
++static int __init mac_addr_set(char *line)
++{
++	unsigned char mac[6];
++	int i = 0;
++	for (i = 0; i < 6 && line[0] != '\0' && line[1] != '\0'; i++) {
++		mac[i] = chartonum(line[0]) << 4 | chartonum(line[1]);
++		line += 3;
++	}
++	memcpy(DEFMAC, mac, 6);
++	pr_debug("uboot setup mac-addr: %x:%x:%x:%x:%x:%x\n",
++		DEFMAC[0], DEFMAC[1], DEFMAC[2], DEFMAC[3], DEFMAC[4],
++		DEFMAC[5]);
++	g_mac_addr_setup = true;
++
++	return 1;
++}
++
++__setup("mac=", mac_addr_set);
++#endif
++
+ /**
+  * stmmac_probe_config_dt - parse device-tree driver parameters
+  * @pdev: platform_device structure
+@@ -217,7 +252,15 @@ stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
+ 	if (!plat)
+ 		return ERR_PTR(-ENOMEM);
+ 
++#ifdef CONFIG_DWMAC_MESON
++	if (g_mac_addr_setup)	/*so uboot mac= is first priority.*/
++		*mac = DEFMAC;
++	else
++		*mac = of_get_mac_address(np);
++#else
+ 	*mac = of_get_mac_address(np);
++#endif
++
+ 	plat->interface = of_get_phy_mode(np);
+ 
+ 	/* Get max speed of operation from device tree */
+diff --git a/drivers/net/phy/realtek.c b/drivers/net/phy/realtek.c
+index 088a0e58afc2..8f761b4fd26a 100644
+--- a/drivers/net/phy/realtek.c
++++ b/drivers/net/phy/realtek.c
+@@ -143,6 +143,10 @@ static int rtl8211f_config_init(struct phy_device *phydev)
+ 	/* config mac address for wol*/
+ 	if ((phydev->attached_dev) && (support_external_phy_wol)) {
+ 		mac_addr = phydev->attached_dev->dev_addr;
++
++		pr_info("set mac for wol = %02x:%02x:%02x:%02x:%02x:%02x\n",
++			mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
++
+ 		phy_write(phydev, RTL8211F_PAGE_SELECT, 0xd8c);
+ 		phy_write(phydev, 0x10, mac_addr[0] | (mac_addr[1] << 8));
+ 		phy_write(phydev, 0x11, mac_addr[2] | (mac_addr[3] << 8));
+@@ -200,7 +204,7 @@ int rtl8211f_suspend(struct phy_device *phydev)
+ 		phy_write(phydev, 0x11, 0x9fff);
+ 		/*pad isolation*/
+ 		value = phy_read(phydev, 0x13);
+-		phy_write(phydev, 0x13, value | (0x1 << 15));
++		phy_write(phydev, 0x13, value | (0x1 << 12));
+ 		/*pin 31 pull high*/
+ 		phy_write(phydev, RTL8211F_PAGE_SELECT, 0xd40);
+ 		value = phy_read(phydev, 0x16);
+diff --git a/drivers/net/usb/r8152.c b/drivers/net/usb/r8152.c
+index 02e29562d254..5d7cb0694bf0 100644
+--- a/drivers/net/usb/r8152.c
++++ b/drivers/net/usb/r8152.c
+@@ -4275,6 +4275,7 @@ static void r8152b_get_version(struct r8152 *tp)
+ 		tp->mii.supports_gmii = 1;
+ 		break;
+ 	case 0x5c30:
++	case 0x6010:
+ 		tp->version = RTL_VER_06;
+ 		tp->mii.supports_gmii = 1;
+ 		break;
+diff --git a/drivers/of/fdt.c b/drivers/of/fdt.c
+index e37a2a597b2d..8875999a7b0c 100644
+--- a/drivers/of/fdt.c
++++ b/drivers/of/fdt.c
+@@ -1110,20 +1110,12 @@ int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
+ 		p = of_get_flat_dt_prop(node, "bootargs", &l);
+ 
+ 	if (p != NULL && l > 0) {
+-		if (concat_cmdline) {
+-			int cmdline_len;
+-			int copy_len;
+-			strlcat(cmdline, " ", COMMAND_LINE_SIZE);
+-			cmdline_len = strlen(cmdline);
+-			copy_len = COMMAND_LINE_SIZE - cmdline_len - 1;
+-			copy_len = min((int)l, copy_len);
+-			strncpy(cmdline + cmdline_len, p, copy_len);
+-			cmdline[cmdline_len + copy_len] = '\0';
+-		} else {
+-			strlcpy(cmdline, p, min((int)l, COMMAND_LINE_SIZE));
+-		}
++		strlcpy(cmdline, p, min((int)l, COMMAND_LINE_SIZE));
+ 	}
+ 
++	if (concat_cmdline)
++		strlcat(cmdline, config_cmdline, COMMAND_LINE_SIZE);
++
+ 	pr_debug("Command line is: %s\n", (char*)data);
+ 
+ 	/* break now */
+diff --git a/drivers/rtc/rtc-hym8563.c b/drivers/rtc/rtc-hym8563.c
+index e5ad527cb75e..9b1dc82c202e 100644
+--- a/drivers/rtc/rtc-hym8563.c
++++ b/drivers/rtc/rtc-hym8563.c
+@@ -128,9 +128,6 @@ static int hym8563_rtc_set_time(struct device *dev, struct rtc_time *tm)
+ 	u8 buf[7];
+ 	int ret;
+ 
+-	/* Years >= 2100 are to far in the future, 19XX is to early */
+-	if (tm->tm_year < 100 || tm->tm_year >= 200)
+-		return -EINVAL;
+ 
+ 	buf[0] = bin2bcd(tm->tm_sec);
+ 	buf[1] = bin2bcd(tm->tm_min);
+@@ -168,121 +165,10 @@ static int hym8563_rtc_set_time(struct device *dev, struct rtc_time *tm)
+ 	return 0;
+ }
+ 
+-static int hym8563_rtc_alarm_irq_enable(struct device *dev,
+-					unsigned int enabled)
+-{
+-	struct i2c_client *client = to_i2c_client(dev);
+-	int data;
+-
+-	data = i2c_smbus_read_byte_data(client, HYM8563_CTL2);
+-	if (data < 0)
+-		return data;
+-
+-	if (enabled)
+-		data |= HYM8563_CTL2_AIE;
+-	else
+-		data &= ~HYM8563_CTL2_AIE;
+-
+-	return i2c_smbus_write_byte_data(client, HYM8563_CTL2, data);
+-};
+-
+-static int hym8563_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alm)
+-{
+-	struct i2c_client *client = to_i2c_client(dev);
+-	struct rtc_time *alm_tm = &alm->time;
+-	u8 buf[4];
+-	int ret;
+-
+-	ret = i2c_smbus_read_i2c_block_data(client, HYM8563_ALM_MIN, 4, buf);
+-	if (ret < 0)
+-		return ret;
+-
+-	/* The alarm only has a minute accuracy */
+-	alm_tm->tm_sec = 0;
+-
+-	alm_tm->tm_min = (buf[0] & HYM8563_ALM_BIT_DISABLE) ?
+-					-1 :
+-					bcd2bin(buf[0] & HYM8563_MIN_MASK);
+-	alm_tm->tm_hour = (buf[1] & HYM8563_ALM_BIT_DISABLE) ?
+-					-1 :
+-					bcd2bin(buf[1] & HYM8563_HOUR_MASK);
+-	alm_tm->tm_mday = (buf[2] & HYM8563_ALM_BIT_DISABLE) ?
+-					-1 :
+-					bcd2bin(buf[2] & HYM8563_DAY_MASK);
+-	alm_tm->tm_wday = (buf[3] & HYM8563_ALM_BIT_DISABLE) ?
+-					-1 :
+-					bcd2bin(buf[3] & HYM8563_WEEKDAY_MASK);
+-
+-	ret = i2c_smbus_read_byte_data(client, HYM8563_CTL2);
+-	if (ret < 0)
+-		return ret;
+-
+-	if (ret & HYM8563_CTL2_AIE)
+-		alm->enabled = 1;
+-
+-	return 0;
+-}
+-
+-static int hym8563_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
+-{
+-	struct i2c_client *client = to_i2c_client(dev);
+-	struct rtc_time *alm_tm = &alm->time;
+-	u8 buf[4];
+-	int ret;
+-
+-	/*
+-	 * The alarm has no seconds so deal with it
+-	 */
+-	if (alm_tm->tm_sec) {
+-		alm_tm->tm_sec = 0;
+-		alm_tm->tm_min++;
+-		if (alm_tm->tm_min >= 60) {
+-			alm_tm->tm_min = 0;
+-			alm_tm->tm_hour++;
+-			if (alm_tm->tm_hour >= 24) {
+-				alm_tm->tm_hour = 0;
+-				alm_tm->tm_mday++;
+-				if (alm_tm->tm_mday > 31)
+-					alm_tm->tm_mday = 0;
+-			}
+-		}
+-	}
+-
+-	ret = i2c_smbus_read_byte_data(client, HYM8563_CTL2);
+-	if (ret < 0)
+-		return ret;
+-
+-	ret &= ~HYM8563_CTL2_AIE;
+-
+-	ret = i2c_smbus_write_byte_data(client, HYM8563_CTL2, ret);
+-	if (ret < 0)
+-		return ret;
+-
+-	buf[0] = (alm_tm->tm_min < 60 && alm_tm->tm_min >= 0) ?
+-			bin2bcd(alm_tm->tm_min) : HYM8563_ALM_BIT_DISABLE;
+-
+-	buf[1] = (alm_tm->tm_hour < 24 && alm_tm->tm_hour >= 0) ?
+-			bin2bcd(alm_tm->tm_hour) : HYM8563_ALM_BIT_DISABLE;
+-
+-	buf[2] = (alm_tm->tm_mday <= 31 && alm_tm->tm_mday >= 1) ?
+-			bin2bcd(alm_tm->tm_mday) : HYM8563_ALM_BIT_DISABLE;
+-
+-	buf[3] = (alm_tm->tm_wday < 7 && alm_tm->tm_wday >= 0) ?
+-			bin2bcd(alm_tm->tm_wday) : HYM8563_ALM_BIT_DISABLE;
+-
+-	ret = i2c_smbus_write_i2c_block_data(client, HYM8563_ALM_MIN, 4, buf);
+-	if (ret < 0)
+-		return ret;
+-
+-	return hym8563_rtc_alarm_irq_enable(dev, alm->enabled);
+-}
+ 
+ static const struct rtc_class_ops hym8563_rtc_ops = {
+ 	.read_time		= hym8563_rtc_read_time,
+ 	.set_time		= hym8563_rtc_set_time,
+-	.alarm_irq_enable	= hym8563_rtc_alarm_irq_enable,
+-	.read_alarm		= hym8563_rtc_read_alarm,
+-	.set_alarm		= hym8563_rtc_set_alarm,
+ };
+ 
+ /*
+@@ -428,42 +314,6 @@ static struct clk *hym8563_clkout_register_clk(struct hym8563 *hym8563)
+ }
+ #endif
+ 
+-/*
+- * The alarm interrupt is implemented as a level-low interrupt in the
+- * hym8563, while the timer interrupt uses a falling edge.
+- * We don't use the timer at all, so the interrupt is requested to
+- * use the level-low trigger.
+- */
+-static irqreturn_t hym8563_irq(int irq, void *dev_id)
+-{
+-	struct hym8563 *hym8563 = (struct hym8563 *)dev_id;
+-	struct i2c_client *client = hym8563->client;
+-	struct mutex *lock = &hym8563->rtc->ops_lock;
+-	int data, ret;
+-
+-	mutex_lock(lock);
+-
+-	/* Clear the alarm flag */
+-
+-	data = i2c_smbus_read_byte_data(client, HYM8563_CTL2);
+-	if (data < 0) {
+-		dev_err(&client->dev, "%s: error reading i2c data %d\n",
+-			__func__, data);
+-		goto out;
+-	}
+-
+-	data &= ~HYM8563_CTL2_AF;
+-
+-	ret = i2c_smbus_write_byte_data(client, HYM8563_CTL2, data);
+-	if (ret < 0) {
+-		dev_err(&client->dev, "%s: error writing i2c data %d\n",
+-			__func__, ret);
+-	}
+-
+-out:
+-	mutex_unlock(lock);
+-	return IRQ_HANDLED;
+-}
+ 
+ static int hym8563_init_device(struct i2c_client *client)
+ {
+@@ -497,16 +347,6 @@ static int hym8563_init_device(struct i2c_client *client)
+ #ifdef CONFIG_PM_SLEEP
+ static int hym8563_suspend(struct device *dev)
+ {
+-	struct i2c_client *client = to_i2c_client(dev);
+-	int ret;
+-
+-	if (device_may_wakeup(dev)) {
+-		ret = enable_irq_wake(client->irq);
+-		if (ret) {
+-			dev_err(dev, "enable_irq_wake failed, %d\n", ret);
+-			return ret;
+-		}
+-	}
+ 
+ 	return 0;
+ }
+@@ -530,6 +370,16 @@ static int hym8563_probe(struct i2c_client *client,
+ 	struct hym8563 *hym8563;
+ 	int ret;
+ 
++	struct rtc_time tm_read, tm = {
++		.tm_sec = 0,
++		.tm_min = 0,
++		.tm_hour = 12,
++		.tm_mday = 1,
++		.tm_mon = 0,
++		.tm_year = 119,
++		.tm_wday = 6,
++	};
++
+ 	hym8563 = devm_kzalloc(&client->dev, sizeof(*hym8563), GFP_KERNEL);
+ 	if (!hym8563)
+ 		return -ENOMEM;
+@@ -545,18 +395,6 @@ static int hym8563_probe(struct i2c_client *client,
+ 		return ret;
+ 	}
+ 
+-	if (client->irq > 0) {
+-		ret = devm_request_threaded_irq(&client->dev, client->irq,
+-						NULL, hym8563_irq,
+-						IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+-						client->name, hym8563);
+-		if (ret < 0) {
+-			dev_err(&client->dev, "irq %d request failed, %d\n",
+-				client->irq, ret);
+-			return ret;
+-		}
+-	}
+-
+ 	/* check state of calendar information */
+ 	ret = i2c_smbus_read_byte_data(client, HYM8563_SEC);
+ 	if (ret < 0)
+@@ -566,6 +404,22 @@ static int hym8563_probe(struct i2c_client *client,
+ 	dev_dbg(&client->dev, "rtc information is %s\n",
+ 		hym8563->valid ? "valid" : "invalid");
+ 
++	if (!hym8563->valid) {
++		ret = hym8563_rtc_set_time(&client->dev, &tm);
++		if (ret < 0) {
++			dev_err(&client->dev, "rtc set time failed, %d\n", ret);
++			return ret;
++		}
++		hym8563->valid = true;
++	}
++
++	/* read current time */
++	ret = hym8563_rtc_read_time(&client->dev, &tm_read);
++	if (ret < 0) {
++		dev_err(&client->dev, "rtc read time failed, %d\n", ret);
++		return ret;
++	}
++
+ 	hym8563->rtc = devm_rtc_device_register(&client->dev, client->name,
+ 						&hym8563_rtc_ops, THIS_MODULE);
+ 	if (IS_ERR(hym8563->rtc))
+diff --git a/fs/proc/cmdline.c b/fs/proc/cmdline.c
+index cbd82dff7e81..1e8f9195ce2e 100644
+--- a/fs/proc/cmdline.c
++++ b/fs/proc/cmdline.c
+@@ -3,9 +3,14 @@
+ #include <linux/proc_fs.h>
+ #include <linux/seq_file.h>
+ 
++#include <asm/setup.h>  /* for COMMAND_LINE_SIZE */
++#include <asm/uaccess.h>    /* copy_from_user */
++
++char proc_cmdline[COMMAND_LINE_SIZE];
++
+ static int cmdline_proc_show(struct seq_file *m, void *v)
+ {
+-	seq_printf(m, "%s\n", saved_command_line);
++	seq_printf(m, "%s\n", proc_cmdline);
+ 	return 0;
+ }
+ 
+@@ -14,15 +19,31 @@ static int cmdline_proc_open(struct inode *inode, struct file *file)
+ 	return single_open(file, cmdline_proc_show, NULL);
+ }
+ 
++static ssize_t cmdline_proc_write(struct file *file, const char __user *buf,
++				size_t len, loff_t *ppos)
++{
++	char str[COMMAND_LINE_SIZE];
++	if (copy_from_user(str, buf, len)) {
++	   printk( KERN_INFO "[cmdline] copy_from_user failed.\n");
++	   return -EFAULT;
++	}
++	str[len] = '\0';
++	strlcpy(proc_cmdline, str, min(len, COMMAND_LINE_SIZE));
++
++	return len;
++}
++
+ static const struct file_operations cmdline_proc_fops = {
+ 	.open		= cmdline_proc_open,
+ 	.read		= seq_read,
++	.write		= cmdline_proc_write,
+ 	.llseek		= seq_lseek,
+ 	.release	= single_release,
+ };
+ 
+ static int __init proc_cmdline_init(void)
+ {
++	strcpy(proc_cmdline, saved_command_line);
+ 	proc_create("cmdline", 0, NULL, &cmdline_proc_fops);
+ 	return 0;
+ }
+diff --git a/include/linux/amlogic/efuse.h b/include/linux/amlogic/efuse.h
+index 5fa2252e0b7d..4e51fd6852c3 100644
+--- a/include/linux/amlogic/efuse.h
++++ b/include/linux/amlogic/efuse.h
+@@ -34,7 +34,4 @@ ssize_t efuse_user_attr_read(char *name, char *buf);
+ #else
+ int efuse_read_intlItem(char *intl_item, char *buf, int size);
+ #endif
+-
+-ssize_t efuse_read_usr(char *buf, size_t count, loff_t *ppos);
+-
+ #endif
+diff --git a/include/linux/amlogic/scpi_protocol.h b/include/linux/amlogic/scpi_protocol.h
+index a9d60eb74448..555d2cd255a5 100644
+--- a/include/linux/amlogic/scpi_protocol.h
++++ b/include/linux/amlogic/scpi_protocol.h
+@@ -27,9 +27,10 @@ enum scpi_client_id {
+ 	SCPI_CL_THERMAL,
+ 	SCPI_CL_REMOTE,
+ 	SCPI_CL_LED_TIMER,
+-#if defined(CONFIG_ARCH_MESON64_ODROID_COMMON)
+ 	SCPI_CL_WOL,
+-#endif
++	SCPI_CL_IRPROTO,
++	SCPI_CL_REMOTE_MASK,
++	SCPI_CL_5V_SYSTEM_POWER,
+ 	SCPI_MAX,
+ };
+ 
+diff --git a/include/net/bluetooth/hci_core.h b/include/net/bluetooth/hci_core.h
+index 57a7dba49d29..4931787193c3 100644
+--- a/include/net/bluetooth/hci_core.h
++++ b/include/net/bluetooth/hci_core.h
+@@ -176,9 +176,6 @@ struct adv_info {
+ 
+ #define HCI_MAX_SHORT_NAME_LENGTH	10
+ 
+-/* Min encryption key size to match with SMP */
+-#define HCI_MIN_ENC_KEY_SIZE		7
+-
+ /* Default LE RPA expiry time, 15 minutes */
+ #define HCI_DEFAULT_RPA_TIMEOUT		(15 * 60)
+ 
